@@ -7587,12 +7587,12 @@ function GanttTab() {
                           const depFlight = t.departingFlight;
                           const arrMins = t.arrWMins; // arrival in week-minutes
                           const pushMins = t.turnLabel === "tech stop" ? t.minTurn : CARGO_MIN_TURN;
-                          const newDepWM = Math.ceil((arrMins + pushMins) / SNAP) * SNAP;
+                          let newDepWM = Math.ceil((arrMins + pushMins) / SNAP) * SNAP;
+                          // Wrap around the week boundary (Sunday → Monday)
+                          if (newDepWM >= WEEK_MINS) newDepWM -= WEEK_MINS;
                           const newDay = Math.floor(newDepWM / DAY_MINS) + 1;
                           const newDep = newDepWM % DAY_MINS;
-                          if (newDay >= 1 && newDay <= 7) {
-                            dispatch({ type: A.UPDATE_FLIGHT, flight: { id: depFlight.id, dep: newDep, day: newDay } });
-                          }
+                          dispatch({ type: A.UPDATE_FLIGHT, flight: { id: depFlight.id, dep: newDep, day: newDay } });
                         } : undefined}
                         title={isV ? `${t.turnLabel || "turn"}: ${fmtTurn(t.gapMins)} vs ${fmtTurn(t.minTurn)} min — double-click to push departure` : `${t.turnLabel || "turn"}: ${fmtTurn(t.gapMins)}`}
                       >
