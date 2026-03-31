@@ -5185,11 +5185,34 @@ function useCloudScenarios() {
     return await fsDelete(`scenarios/${scenarioId}/snapshots`, snapId);
   }, []);
 
+  const [defaultId, setDefaultIdState] = useState(null);
+
+  // Load default scenario ID on mount
+  useEffect(() => {
+    (async () => {
+      const cfg = await fsGet("config", "defaultScenario");
+      if (cfg?.id) setDefaultIdState(cfg.id);
+    })();
+  }, []);
+
+  const setDefaultScenario = useCallback(async (id) => {
+    const ok = await fsSet("config", "defaultScenario", { id });
+    if (ok) setDefaultIdState(id);
+    return ok;
+  }, []);
+
+  const clearDefaultScenario = useCallback(async () => {
+    const ok = await fsSet("config", "defaultScenario", { id: null });
+    if (ok) setDefaultIdState(null);
+    return ok;
+  }, []);
+
   return {
     scenarios, activeId, setActiveId, loading, saving,
     refresh, saveScenario, createScenario, loadScenario,
     deleteScenario, renameScenario,
     saveSnapshot, listSnapshots, loadSnapshot, deleteSnapshot,
+    defaultId, setDefaultScenario, clearDefaultScenario,
   };
 }
 
@@ -13199,6 +13222,20 @@ function AppShell() {
 
   const cloud = useCloudScenarios();
 
+  // Auto-load default scenario on startup
+  const defaultLoaded = useRef(false);
+  useEffect(() => {
+    if (defaultLoaded.current || !cloud.defaultId || cloud.loading) return;
+    defaultLoaded.current = true;
+    (async () => {
+      const data = await cloud.loadScenario(cloud.defaultId);
+      if (data) {
+        data.scenarioName = data.name || data.scenarioName || "Default Schedule";
+        dispatch({ type: A.LOAD_FULL_SCENARIO, data });
+      }
+    })();
+  }, [cloud.defaultId, cloud.loading]);
+
   // Close export dropdown on outside click
   useEffect(() => {
     if (!exportOpen) return;
@@ -14629,6 +14666,10 @@ function AppShell() {
                                       fontSize: 8, color: C.success, fontWeight: 700, padding: "1px 5px",
                                       background: C.successLight, borderRadius: 3, marginLeft: 6,
                                     }}>ACTIVE</span>}
+                                    {cloud.defaultId === sc.id && <span style={{
+                                      fontSize: 8, color: C.yellowHeavy, fontWeight: 700, padding: "1px 5px",
+                                      background: C.yellowLight, borderRadius: 3, marginLeft: 4,
+                                    }}>DEFAULT</span>}
                                     {sc.notes && (
                                       <div style={{ fontSize: 9, color: C.textSoft, fontWeight: 400, marginTop: 2, lineHeight: 1.3 }}>
                                         {sc.notes.length > 60 ? sc.notes.slice(0, 60) + "…" : sc.notes}
@@ -14663,6 +14704,19 @@ function AppShell() {
                                         setTimeout(() => setScenarioMsg(null), 3000);
                                       }
                                     }} style={{ fontSize: 9, padding: "3px 10px" }}>Load</PrimaryBtn>
+                                  )}
+                                  {cloud.defaultId === sc.id ? (
+                                    <GhostBtn onClick={async () => {
+                                      await cloud.clearDefaultScenario();
+                                      setScenarioMsg({ ok: true, msg: "Default cleared." });
+                                      setTimeout(() => setScenarioMsg(null), 2000);
+                                    }} style={{ fontSize: 9, padding: "3px 8px", color: C.success }}>Default ✓</GhostBtn>
+                                  ) : (
+                                    <GhostBtn onClick={async () => {
+                                      await cloud.setDefaultScenario(sc.id);
+                                      setScenarioMsg({ ok: true, msg: `"${sc.name}" set as default.` });
+                                      setTimeout(() => setScenarioMsg(null), 2000);
+                                    }} style={{ fontSize: 9, padding: "3px 8px" }}>Set Default</GhostBtn>
                                   )}
                                   <GhostBtn onClick={() => { setRenamingId(sc.id); setRenameVal(sc.name); }}
                                     style={{ fontSize: 9, padding: "3px 8px" }}>Rename</GhostBtn>
@@ -14795,6 +14849,19 @@ function AppShell() {
                             setTimeout(() => setScenarioMsg(null), 3000);
                           }
                         }}>Load This Scenario</PrimaryBtn>
+                      )}
+                      {cloud.defaultId === sc.id ? (
+                        <GhostBtn onClick={async () => {
+                          await cloud.clearDefaultScenario();
+                          setScenarioMsg({ ok: true, msg: "Default cleared." });
+                          setTimeout(() => setScenarioMsg(null), 2000);
+                        }} style={{ color: C.success }}>Default ✓</GhostBtn>
+                      ) : (
+                        <GhostBtn onClick={async () => {
+                          await cloud.setDefaultScenario(sc.id);
+                          setScenarioMsg({ ok: true, msg: `"${sc.name}" set as default.` });
+                          setTimeout(() => setScenarioMsg(null), 2000);
+                        }}>Set as Default</GhostBtn>
                       )}
                     </>
                   )}
