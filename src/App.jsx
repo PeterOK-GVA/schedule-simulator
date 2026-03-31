@@ -7583,10 +7583,11 @@ function GanttTab() {
                         style={{ cursor: isV ? "pointer" : "default" }}
                         onDoubleClick={isV ? (e) => {
                           e.stopPropagation();
-                          // Push departing flight to minimum turn time
+                          // Push departing flight: tech stops use minTurn (90m), all others default to 3h
                           const depFlight = t.departingFlight;
                           const arrMins = t.arrWMins; // arrival in week-minutes
-                          const newDepWM = Math.ceil((arrMins + t.minTurn) / SNAP) * SNAP;
+                          const pushMins = t.turnLabel === "tech stop" ? t.minTurn : CARGO_MIN_TURN;
+                          const newDepWM = Math.ceil((arrMins + pushMins) / SNAP) * SNAP;
                           const newDay = Math.floor(newDepWM / DAY_MINS) + 1;
                           const newDep = newDepWM % DAY_MINS;
                           if (newDay >= 1 && newDay <= 7) {
