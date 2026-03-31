@@ -5472,6 +5472,34 @@ function useScheduleValidation() {
         departingFlight:  next,
       });
     }
+
+    // Week wrap-around: last flight (Sunday end) → first flight (Monday start)
+    if (sorted.length >= 2) {
+      const last = sorted[sorted.length - 1];
+      const first = sorted[0];
+      const lastArrWM = weekMins(last.day, last.dep) + last.block;
+      // Only if the last flight's block extends past or near the week end
+      if (lastArrWM > WEEK_MINS - DAY_MINS) { // last flight is on Sunday or overflows into it
+        const firstDepWM = weekMins(first.day, first.dep);
+        const gap = (firstDepWM + WEEK_MINS) - lastArrWM;
+        const turn = getMinTurnFromPair(last, first);
+        const isViolation = gap < turn.mins;
+        const isOverlap = gap < 0;
+        gaps.push({
+          gapMins:          gap,
+          arrWMins:         lastArrWM,
+          depWMins:         firstDepWM,
+          minTurn:          turn.mins,
+          turnLabel:        isOverlap ? "overlap" : turn.label,
+          isViolation,
+          isOverlap,
+          arrivingFlight:   last,
+          departingFlight:  first,
+          isWeekWrap:       true,
+        });
+      }
+    }
+
     return gaps;
   }, [flights]);
 
@@ -7505,8 +7533,19 @@ function GanttTab() {
                   {/* Full detail at high zoom, violation dots at any zoom */}
                   {allTurns.filter(t => hourW >= 28 || t.isViolation).map((t, i) => {
                     if (t.isOverlap) return null; // overlaps handled by conflict highlight
-                    const x1 = localWMinsToX(t.arrWMins);
-                    const x2 = localWMinsToX(t.depWMins);
+
+                    // Week-wrap turnarounds: arrival is past Sunday, departure is on Monday
+                    // Render between the wrap-around arrival point (at LABEL_WIDTH) and Monday's first departure
+                    let x1, x2;
+                    if (t.isWeekWrap) {
+                      // arrWMins is past WEEK_MINS boundary — show from the wrap point at Monday start
+                      x1 = localWMinsToX(t.arrWMins - WEEK_MINS);
+                      x2 = localWMinsToX(t.depWMins);
+                      if (x1 < LABEL_WIDTH) x1 = LABEL_WIDTH;
+                    } else {
+                      x1 = localWMinsToX(t.arrWMins);
+                      x2 = localWMinsToX(t.depWMins);
+                    }
                     const cx = (x1 + x2) / 2;
                     const gapPx = x2 - x1;
                     const isV  = t.isViolation;
