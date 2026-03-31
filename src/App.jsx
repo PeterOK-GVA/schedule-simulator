@@ -7575,6 +7575,12 @@ function GanttTab() {
                     const fy = ry + 4, fh = ROW_HEIGHT - 8;
                     const sel = selected.has(flight.id);
 
+                    // Wrap-around: clip main block at right edge, draw overflow at Monday
+                    const fRightEdge = LABEL_WIDTH + (WEEK_MINS / 60) * hourW;
+                    const fOverflows = fx + fw > fRightEdge;
+                    const fMainW = fOverflows ? fRightEdge - fx : fw;
+                    const fWrapW = fOverflows ? (fx + fw) - fRightEdge : 0;
+
                     const conflict = hasConflict(flight);
                     const connect  = hasConnectivityIssue(flight);
                     const cviol    = curfewViolations(flight);
@@ -7605,14 +7611,14 @@ function GanttTab() {
                                   stroke="#3a322c" strokeWidth="3" opacity="0.25" />
                               </pattern>
                             </defs>
-                            <rect x={fx} y={fy} width={Math.max(fw, 4)} height={fh}
+                            <rect x={fx} y={fy} width={Math.max(fMainW, 4)} height={fh}
                               fill={`url(#hatch-${flight.id})`} rx={4} />
                           </>
                         )}
 
                         {/* Selection shadow */}
                         {sel && (
-                          <rect x={fx - 1} y={fy - 1} width={Math.max(fw, 4) + 2} height={fh + 2}
+                          <rect x={fx - 1} y={fy - 1} width={Math.max(fMainW, 4) + 2} height={fh + 2}
                             rx={5} fill="none" stroke={C.yellowHeavy} strokeWidth={2.5}
                             strokeDasharray={selected.size > 1 ? "4 2" : "none"} />
                         )}
@@ -7620,7 +7626,7 @@ function GanttTab() {
                         {/* Main block rect */}
                         <rect
                           x={fx} y={fy}
-                          width={Math.max(fw, 4)} height={fh}
+                          width={Math.max(fMainW, 4)} height={fh}
                           fill={isMaint ? "transparent" : bgFill}
                           stroke={stroke} strokeWidth={sw} rx={4}
                           style={{
@@ -7644,8 +7650,47 @@ function GanttTab() {
                           onMouseLeave={() => { if (!dragActiveRef.current) setTooltip(null); }}
                         />
 
+                        {/* Wrap-around block — overflow from Sunday into Monday */}
+                        {fWrapW > 1 && (
+                          <rect
+                            x={LABEL_WIDTH} y={fy}
+                            width={fWrapW} height={fh}
+                            fill={isMaint ? "transparent" : bgFill}
+                            stroke={stroke} strokeWidth={sw} rx={4}
+                            strokeDasharray="4 4"
+                            style={{
+                              cursor: "grab",
+                              filter: searchDim ? "none" : "drop-shadow(0 1px 3px rgba(0,0,0,0.1))",
+                              opacity: searchDim ? 0.35 : 0.75,
+                            }}
+                            onMouseDown={e => { dragActiveRef.current = true; setTooltip(null); startDrag(e, flight.id); }}
+                            onClick={e => {
+                              e.stopPropagation();
+                              if (!dragEngagedRef.current) {
+                                clearTimeout(clickTimerRef.current);
+                                const synth = { shiftKey: e.shiftKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey };
+                                clickTimerRef.current = setTimeout(() => toggleSelect(flight.id, synth), 250);
+                              }
+                            }}
+                            onDoubleClick={e => { e.stopPropagation(); clearTimeout(clickTimerRef.current); openEdit(e, flight.id); }}
+                            onContextMenu={e => openContextMenu(e, flight)}
+                            onMouseEnter={e => { if (!dragActiveRef.current) setTooltip({ flight, x: e.clientX, y: e.clientY }); }}
+                            onMouseLeave={() => { if (!dragActiveRef.current) setTooltip(null); }}
+                          />
+                        )}
+                        {/* Wrap-around route label */}
+                        {fWrapW > 30 && !isMaint && (
+                          <text x={LABEL_WIDTH + 6} y={fy + fh / 2 + 1}
+                            fill={searchMatch ? C.yellowHeavy : searchDim ? C.textMuted : connect ? C.danger : style.txt}
+                            fontSize={hourW >= 14 ? 10 : 8} fontFamily={MONO} fontWeight={searchMatch ? "800" : "700"}
+                            opacity="0.75"
+                            style={{ pointerEvents: "none", userSelect: "none" }}>
+                            {flight.route}
+                          </text>
+                        )}
+
                         {/* Route label — always visible */}
-                        {!isMaint && fw > 18 && (
+                        {!isMaint && fMainW > 18 && (
                           <text x={fx + 6} y={fy + fh / 2 + (hourW >= 21 && fh > 28 ? -3 : 1)}
                             fill={searchMatch ? C.yellowHeavy : searchDim ? C.textMuted : connect ? C.danger : style.txt}
                             fontSize={hourW >= 14 ? 10 : 8} fontFamily={MONO} fontWeight={searchMatch ? "800" : "700"}
@@ -7655,7 +7700,7 @@ function GanttTab() {
                         )}
 
                         {/* Flight number + times — from 50% zoom */}
-                        {!isMaint && hourW >= 21 && fw > 44 && fh > 28 && (() => {
+                        {!isMaint && hourW >= 21 && fMainW > 44 && fh > 28 && (() => {
                           const fn = (flight.flightNum || "").replace(/^([A-Z]{2})(\d)/, "$1 $2");
                           const times = `${toHHMM(flight.dep)}–${toHHMM(flight.dep + flight.block)}`;
                           const cust = flight.customer ? ` · ${flight.customer}` : "";
@@ -7671,20 +7716,20 @@ function GanttTab() {
                         })()}
 
                         {/* Maintenance label */}
-                        {isMaint && fw > 18 && (
-                          <text x={fx + Math.min(6, fw / 2)} y={fy + fh / 2 + 2}
+                        {isMaint && fMainW > 18 && (
+                          <text x={fx + Math.min(6, fMainW / 2)} y={fy + fh / 2 + 2}
                             fill={style.txt} fontSize={8} fontFamily={FONT} fontWeight="700"
                             style={{ pointerEvents: "none", userSelect: "none", opacity: 0.9 }}>
-                            {fw > 50 ? "MX " : "MX"}{fw > 80 ? (flight.route || "MX") : ""}
+                            {fMainW > 50 ? "MX " : "MX"}{fMainW > 80 ? (flight.route || "MX") : ""}
                           </text>
                         )}
 
                         {/* Issue indicator — right-center of block */}
-                        {!isMaint && hasIssue && fw > 14 && (
+                        {!isMaint && hasIssue && fMainW > 14 && (
                           <g style={{ pointerEvents: "none" }}>
-                            <circle cx={fx + fw - 8} cy={fy + fh / 2} r={5}
+                            <circle cx={fx + fMainW - 8} cy={fy + fh / 2} r={5}
                               fill={hasError ? "#C4664A" : "#C4964A"} opacity="0.85" />
-                            <text x={fx + fw - 8} y={fy + fh / 2 + 2.5} textAnchor="middle"
+                            <text x={fx + fMainW - 8} y={fy + fh / 2 + 2.5} textAnchor="middle"
                               fill="#FFFFFF" fontSize={7} fontWeight="700"
                               fontFamily={FONT}
                               style={{ pointerEvents: "none", userSelect: "none" }}>!</text>
