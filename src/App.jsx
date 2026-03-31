@@ -14319,7 +14319,26 @@ function AppShell() {
               let nextDep = "06:00";
               if (lastRow && lastRow.dep) {
                 const [hh, mm] = lastRow.dep.split(":").map(Number);
-                const totalMin = (hh || 0) * 60 + (mm || 0) + 120;
+                const depMins = (hh || 0) * 60 + (mm || 0);
+                // Compute arrival: dep + block time for the route
+                const ld = (lastRow.depApt || "").toUpperCase();
+                const la = (lastRow.arrApt || "").toUpperCase();
+                const lRoute = ld && la ? `${ld}-${la}` : "";
+                const lAoc = (() => { const ac = aircraft.find(a => a.id === (lastRow.acId || "")); return ac ? deriveAoc(ac.reg).code : null; })();
+                const lBlock = lRoute ? lookupBlock(lRoute, lAoc) : null;
+                const lEst = !lBlock && ld && la ? estimateBlock(ld, la, activeSeason) : null;
+                const blockMins = lBlock || (lEst ? lEst.blockMins : 0);
+                // Turn time: use getMinTurnFromPair logic inline
+                // For the new row we default to the same type/cargoOp as the last row
+                const newType = lastRow.type || "F";
+                const newCargoOp = (newType === "P" || newType === "M") ? "none" : (lastRow.cargoOp || "both");
+                const turnMins = blockMins > 0
+                  ? getMinTurnFromPair(
+                      { type: lastRow.type, cargoOp: lastRow.cargoOp },
+                      { type: newType, cargoOp: newCargoOp }
+                    ).mins
+                  : 120; // fallback if no route/block known
+                const totalMin = depMins + blockMins + turnMins;
                 const nh = Math.floor(totalMin / 60) % 24;
                 const nm = totalMin % 60;
                 nextDep = `${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
