@@ -14328,16 +14328,16 @@ function AppShell() {
                 const lBlock = lRoute ? lookupBlock(lRoute, lAoc) : null;
                 const lEst = !lBlock && ld && la ? estimateBlock(ld, la, activeSeason) : null;
                 const blockMins = lBlock || (lEst ? lEst.blockMins : 0);
-                // Turn time: use getMinTurnFromPair logic inline
-                // For the new row we default to the same type/cargoOp as the last row
+                // Turn time: tech stop (1.5h) if no cargo on either side, otherwise 3h
                 const newType = lastRow.type || "F";
                 const newCargoOp = (newType === "P" || newType === "M") ? "none" : (lastRow.cargoOp || "both");
+                const isTechStop = getMinTurnFromPair(
+                  { type: lastRow.type, cargoOp: lastRow.cargoOp },
+                  { type: newType, cargoOp: newCargoOp }
+                ).label === "tech stop";
                 const turnMins = blockMins > 0
-                  ? getMinTurnFromPair(
-                      { type: lastRow.type, cargoOp: lastRow.cargoOp },
-                      { type: newType, cargoOp: newCargoOp }
-                    ).mins
-                  : 120; // fallback if no route/block known
+                  ? (isTechStop ? MIN_TURN : CARGO_MIN_TURN)
+                  : CARGO_MIN_TURN; // fallback 3h if no route/block known
                 const totalMin = depMins + blockMins + turnMins;
                 const nh = Math.floor(totalMin / 60) % 24;
                 const nm = totalMin % 60;
