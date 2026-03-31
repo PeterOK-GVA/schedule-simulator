@@ -8143,9 +8143,10 @@ function GanttTab() {
         const editBlock = editRoute ? lookupBlock(editRoute, editAoc, editModal.flightNum) : null;
         const editPayload = editRoute ? lookupPayload(editRoute, editAoc, editModal.flightNum) : null;
         return (
-        <Modal title="Edit Flight" onClose={() => setEditModal(null)} width={380}>
-          {/* Row 1: Flight Number + Aircraft */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+        <Modal title="Edit Flight" onClose={() => setEditModal(null)} width={400}>
+
+          {/* ── Section: Identity ──────────────────────────────────── */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
             <div style={{ width: 120 }}>
               <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Flight No</label>
               <input style={iStyle} placeholder="CP 192"
@@ -8166,95 +8167,96 @@ function GanttTab() {
             </div>
           </div>
 
-          {/* Row 2: Dep + Arr airports */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 4 }}>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Dep</label>
-              <input style={{ ...iStyle, fontFamily: MONO, textTransform: "uppercase", letterSpacing: 1 }} placeholder="LGG"
-                maxLength={4}
-                value={editModal.depApt || ""}
-                onChange={e => setEditModal({ ...editModal, depApt: e.target.value.toUpperCase() })} />
+          {/* ── Section: Route ─────────────────────────────────────── */}
+          <div style={{ padding: "10px 12px", marginBottom: 10, borderRadius: 6, background: C.offWhite2, border: `1px solid ${C.brownLight}` }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Dep</label>
+                <input style={{ ...iStyle, fontFamily: MONO, textTransform: "uppercase", letterSpacing: 1 }} placeholder="LGG"
+                  maxLength={4}
+                  value={editModal.depApt || ""}
+                  onChange={e => setEditModal({ ...editModal, depApt: e.target.value.toUpperCase() })} />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", paddingTop: 14, color: C.textMuted, fontSize: 14 }}>→</div>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Arr</label>
+                <input style={{ ...iStyle, fontFamily: MONO, textTransform: "uppercase", letterSpacing: 1 }} placeholder="JFK"
+                  maxLength={4}
+                  value={editModal.arrApt || ""}
+                  onChange={e => setEditModal({ ...editModal, arrApt: e.target.value.toUpperCase() })} />
+              </div>
             </div>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Arr</label>
-              <input style={{ ...iStyle, fontFamily: MONO, textTransform: "uppercase", letterSpacing: 1 }} placeholder="JFK"
-                maxLength={4}
-                value={editModal.arrApt || ""}
-                onChange={e => setEditModal({ ...editModal, arrApt: e.target.value.toUpperCase() })} />
-            </div>
+            <CurfewInfo depApt={editModal.depApt} arrApt={editModal.arrApt} lookupAirport={lookupAirport} />
+            {/* Route table reference */}
+            {editRoute && (() => {
+              const fmtB = (m) => { const h = Math.floor(m / 60), mn = m % 60; return h > 0 ? `${h}h ${mn > 0 ? `${mn}m` : ""}`.trim() : `${mn}m`; };
+              const entry = lookupBlockEntry(editRoute, flightAoc(editModal.acId), editModal.flightNum);
+              if (entry) {
+                const perfVal = activeSeason === "W" ? entry.W : entry.S;
+                const opsVal = activeSeason === "W" ? entry.opW : entry.opS;
+                const parts = [];
+                if (opsVal > 0) parts.push(`ops: ${fmtB(opsVal)}`);
+                if (perfVal > 0) parts.push(`perf: ${fmtB(perfVal)}`);
+                return (
+                  <div style={{ fontSize: 9, color: C.textSoft, marginTop: 2 }}>
+                    {parts.join(" · ")}
+                    {editPayload != null && ` · ${fmtKg(editPayload)} payload`}
+                    {" "}({activeSeason === "W" ? "Winter" : "Summer"})
+                  </div>
+                );
+              }
+              const [d, a] = editRoute.split("-");
+              const est = d && a ? estimateBlock(d, a, activeSeason) : null;
+              if (est) {
+                return (
+                  <div style={{ fontSize: 9, color: C.yellowHeavy, marginTop: 2 }}>
+                    ≈ Estimated: {fmtB(est.blockMins)} block · {fmtKg(est.payloadKg)} payload · {fmtNum(est.dist, 0)} km {est.dir}
+                  </div>
+                );
+              }
+              return null;
+            })()}
           </div>
 
-          {/* Curfew info for origin + destination */}
-          <CurfewInfo depApt={editModal.depApt} arrApt={editModal.arrApt} lookupAirport={lookupAirport} />
-
-          {/* Route info */}
-          {editBlock ? (
-            <div style={{
-              marginBottom: 8, padding: "4px 8px",
-              background: C.offWhite2, borderRadius: 4, fontSize: 10,
-              color: C.textSoft, border: `1px solid ${C.brownLight}`,
-            }}>
-              {(() => {
-                const entry = lookupBlockEntry(editRoute, flightAoc(editModal.acId), editModal.flightNum);
-                const perfVal = entry ? (activeSeason === "W" ? entry.W : entry.S) : null;
-                const opsVal = entry ? (activeSeason === "W" ? entry.opW : entry.opS) : null;
-                const fmtB = (m) => { const h = Math.floor(m / 60), mn = m % 60; return h > 0 ? `${h}h ${mn > 0 ? `${mn}m` : ""}`.trim() : `${mn}m`; };
-                const parts = [];
-                if (perfVal > 0) parts.push(`perf: ${fmtB(perfVal)}`);
-                if (opsVal > 0) parts.push(`ops: ${fmtB(opsVal)}`);
-                return parts.join(" · ");
-              })()}
-              {editPayload != null && ` · ${fmtKg(editPayload)} payload`}
-              {" "}({activeSeason === "W" ? "Winter" : "Summer"})
-            </div>
-          ) : editRoute && (() => {
-            const [d, a] = editRoute.split("-");
-            const est = d && a ? estimateBlock(d, a, activeSeason) : null;
-            if (!est) return null;
-            return (
-              <div style={{
-                marginBottom: 8, padding: "4px 8px",
-                background: C.warnLight, borderRadius: 4, fontSize: 10,
-                color: C.yellowHeavy, border: `1px solid ${C.yellowHeavy}`,
-              }}>
-                ≈ Estimated: {est.blockMins}m block · {fmtKg(est.payloadKg)} payload · {fmtNum(est.dist, 0)} km {est.dir}
+          {/* ── Section: Schedule ──────────────────────────────────── */}
+          <div style={{ padding: "10px 12px", marginBottom: 10, borderRadius: 6, background: C.offWhite2, border: `1px solid ${C.brownLight}` }}>
+            <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "flex-end" }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Day of Week</label>
+                <DaySelector value={editModal.day || 1}
+                  onChange={v => setEditModal({ ...editModal, day: v })} />
               </div>
-            );
-          })()}
-
-          {/* Block time — editable override */}
-          {(() => {
-            const currentBlock = editModal.block;
-            const fmtBT = (m) => { const h = Math.floor(m/60), mm = m%60; return h > 0 ? `${h}h ${mm > 0 ? `${mm}m` : ""}`.trim() : `${mm}m`; };
-            const blockEntry = editRoute ? lookupBlockEntry(editRoute, flightAoc(editModal.acId), editModal.flightNum) : null;
-
-            // Gather all valid block values for this route/season
-            const perfBlock = blockEntry ? (activeSeason === "W" ? blockEntry.W : blockEntry.S) : null;
-            const opsBlock = blockEntry ? (activeSeason === "W" ? blockEntry.opW : blockEntry.opS) : null;
-            const validPerf = perfBlock && perfBlock > 0 ? perfBlock : null;
-            const validOps = opsBlock && opsBlock > 0 ? opsBlock : null;
-
-            // Fallback to estimate if no route table entry
-            const estBlock = !blockEntry ? (() => {
-              const [d, a] = (editRoute || "").split("-");
-              const est = d && a ? estimateBlock(d, a, activeSeason) : null;
-              return est ? est.blockMins : null;
-            })() : null;
-
-            // Preferred block: ops > perf > estimate (strict priority chain)
-            const correctBlock = validOps || validPerf || estBlock;
-            const correctSrc = validOps ? "operational" : validPerf ? "performance" : estBlock ? "estimated" : null;
-
-            const isOverridden = correctBlock && currentBlock !== correctBlock;
-
-            // Convert minutes to HH:MM for the time input
-            const blockHH = String(Math.floor(currentBlock / 60)).padStart(2, "0");
-            const blockMM = String(currentBlock % 60).padStart(2, "0");
-
-            return (
-              <div style={{ marginBottom: 8 }}>
+              <div style={{ width: 100 }}>
+                <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>STD (UTC)</label>
+                <input style={iStyle} type="time" value={toHHMM(editModal.dep)}
+                  onChange={e => {
+                    const [hh, mm] = e.target.value.split(":").map(Number);
+                    setEditModal({ ...editModal, dep: hh * 60 + mm });
+                  }} />
+              </div>
+            </div>
+            {/* Block time — editable */}
+            {(() => {
+              const currentBlock = editModal.block;
+              const fmtBT = (m) => { const h = Math.floor(m/60), mm = m%60; return h > 0 ? `${h}h ${mm > 0 ? `${mm}m` : ""}`.trim() : `${mm}m`; };
+              const blockEntry = editRoute ? lookupBlockEntry(editRoute, flightAoc(editModal.acId), editModal.flightNum) : null;
+              const perfBlock = blockEntry ? (activeSeason === "W" ? blockEntry.W : blockEntry.S) : null;
+              const opsBlock = blockEntry ? (activeSeason === "W" ? blockEntry.opW : blockEntry.opS) : null;
+              const validPerf = perfBlock && perfBlock > 0 ? perfBlock : null;
+              const validOps = opsBlock && opsBlock > 0 ? opsBlock : null;
+              const estBlock = !blockEntry ? (() => {
+                const [d, a] = (editRoute || "").split("-");
+                const est = d && a ? estimateBlock(d, a, activeSeason) : null;
+                return est ? est.blockMins : null;
+              })() : null;
+              const correctBlock = validOps || validPerf || estBlock;
+              const correctSrc = validOps ? "operational" : validPerf ? "performance" : estBlock ? "estimated" : null;
+              const isOverridden = correctBlock && currentBlock !== correctBlock;
+              const blockHH = String(Math.floor(currentBlock / 60)).padStart(2, "0");
+              const blockMM = String(currentBlock % 60).padStart(2, "0");
+              return (
                 <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
-                  <div style={{ width: 120 }}>
+                  <div style={{ width: 100 }}>
                     <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Block Time</label>
                     <input style={{ ...iStyle, fontFamily: MONO, fontWeight: 700, color: isOverridden ? C.yellowHeavy : C.brownDark }}
                       type="time" value={`${blockHH}:${blockMM}`}
@@ -8264,86 +8266,55 @@ function GanttTab() {
                       }} />
                   </div>
                   <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2, paddingBottom: 4 }}>
-                    {correctBlock && (
-                      <span style={{ fontSize: 9, color: C.textMuted }}>
-                        Route table: {fmtBT(correctBlock)} ({correctSrc})
-                        {validOps && validPerf && validOps !== validPerf && ` · perf: ${fmtBT(validPerf)}`}
-                      </span>
-                    )}
-                    {isOverridden && (
-                      <span style={{ fontSize: 9, color: C.yellowHeavy, fontWeight: 600 }}>
-                        Manual override active
-                      </span>
-                    )}
-                    {!isOverridden && correctBlock && (
-                      <span style={{ fontSize: 9, color: C.success }}>✓ matches {correctSrc}</span>
-                    )}
+                    {isOverridden ? (
+                      <>
+                        <span style={{ fontSize: 9, color: C.yellowHeavy, fontWeight: 600 }}>Override — table: {fmtBT(correctBlock)} ({correctSrc})</span>
+                        <button onClick={() => setEditModal({ ...editModal, block: correctBlock })}
+                          style={{
+                            background: "none", color: C.yellowHeavy, border: `1px solid ${C.yellowHeavy}`,
+                            padding: "1px 8px", borderRadius: 3, fontSize: 9, fontWeight: 600,
+                            fontFamily: FONT, cursor: "pointer", alignSelf: "flex-start",
+                          }}>Reset</button>
+                      </>
+                    ) : correctBlock ? (
+                      <span style={{ fontSize: 9, color: C.success }}>✓ {correctSrc}{validOps && validPerf && validOps !== validPerf ? ` · perf: ${fmtBT(validPerf)}` : ""}</span>
+                    ) : null}
                   </div>
                 </div>
-                {isOverridden && (
-                  <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
-                    <button onClick={() => setEditModal({ ...editModal, block: correctBlock })}
-                      style={{
-                        background: C.yellowHeavy, color: "#fff",
-                        border: "none", padding: "3px 10px", borderRadius: 4,
-                        fontSize: 10, fontWeight: 700, fontFamily: FONT, cursor: "pointer",
-                      }}>Reset to {correctSrc} ({fmtBT(correctBlock)})</button>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-
-          {/* Row 3: DOW + STD */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "flex-end" }}>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Day of Week</label>
-              <DaySelector value={editModal.day || 1}
-                onChange={v => setEditModal({ ...editModal, day: v })} />
-            </div>
-            <div style={{ width: 120 }}>
-              <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>STD (UTC)</label>
-              <input style={iStyle} type="time" value={toHHMM(editModal.dep)}
-                onChange={e => {
-                  const [hh, mm] = e.target.value.split(":").map(Number);
-                  setEditModal({ ...editModal, dep: hh * 60 + mm });
-                }} />
-            </div>
+              );
+            })()}
           </div>
 
-          {/* Flight type */}
-          <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 2 }}>
+          {/* ── Section: Classification ────────────────────────────── */}
+          <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }}>
             <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted }}>Flight Type</label>
             <button
               onClick={() => setEditModal(m => ({ ...m, showTypeInfo: !m.showTypeInfo }))}
               style={{
                 width: 14, height: 14, borderRadius: "50%", border: `1px solid ${C.brownLight}`,
                 background: editModal.showTypeInfo ? C.brownPale : C.white, color: C.textSoft,
-                fontSize: 9, fontWeight: 700, cursor: "pointer", padding: 0,
+                fontSize: 9, cursor: "pointer", padding: 0,
                 display: "inline-flex", alignItems: "center", justifyContent: "center",
-                fontFamily: FONT, fontStyle: "normal", fontWeight: 700,
+                fontFamily: FONT, fontWeight: 700,
               }}
               title="What do these types mean?"
             >i</button>
           </div>
           {editModal.showTypeInfo && (
             <div style={{
-              marginBottom: 8, padding: "8px 10px", borderRadius: 6,
+              marginBottom: 6, padding: "6px 10px", borderRadius: 5,
               background: C.offWhite2, border: `1px solid ${C.brownLight}`,
-              fontSize: 10, lineHeight: 1.6, color: C.text,
+              fontSize: 10, lineHeight: 1.5, color: C.text,
             }}>
               {[
-                { code: "F", desc: "Scheduled — regular planned freighter services on published schedules" },
-                { code: "H", desc: "Charter — contracted flights for a specific customer or ad-hoc capacity" },
-                { code: "P", desc: "Ferry/Positioning — empty repositioning flights between stations, no commercial payload" },
+                { code: "F", desc: "Scheduled — regular planned freighter services" },
+                { code: "H", desc: "Charter — contracted or ad-hoc capacity" },
+                { code: "P", desc: "Ferry — empty repositioning, no payload" },
               ].map(t => {
                 const ft = FLIGHT_TYPES[t.code];
                 return (
-                  <div key={t.code} style={{ display: "flex", alignItems: "flex-start", gap: 6, marginBottom: 3 }}>
-                    <span style={{
-                      width: 8, height: 8, borderRadius: 2, marginTop: 3, flexShrink: 0,
-                      background: ft.bg, border: `1px solid ${ft.bdr}`, display: "inline-block",
-                    }} />
+                  <div key={t.code} style={{ display: "flex", alignItems: "flex-start", gap: 5, marginBottom: 2 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 2, marginTop: 3, flexShrink: 0, background: ft.bg, border: `1px solid ${ft.bdr}` }} />
                     <span><strong>{t.code}</strong> — {t.desc}</span>
                   </div>
                 );
@@ -8370,53 +8341,54 @@ function GanttTab() {
             ))}
           </div>
 
-          {/* Cargo movement */}
           {["F","H"].includes(editModal.type) && (
-            <>
-              <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Cargo Movement</label>
-              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                {[["both", "↑↓ Both"], ["upload", "↑ Uplift"], ["offload", "↓ Offload"], ["none", "— None"]].map(([v, l]) => (
-                  <button key={v}
-                    onClick={() => setEditModal({ ...editModal, cargoOp: v })}
-                    style={{
-                      flex: 1, padding: "4px", borderRadius: 5, cursor: "pointer",
-                      fontFamily: FONT, fontSize: 10, fontWeight: 600,
-                      border: `2px solid ${(editModal.cargoOp || "none") === v ? C.brownDark : C.brownLight}`,
-                      background: (editModal.cargoOp || "none") === v ? C.brownPale : C.white,
-                      color: (editModal.cargoOp || "none") === v ? C.brownDark : C.textSoft,
-                    }}
-                  >{l}</button>
-                ))}
+            <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "flex-end" }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Cargo Movement</label>
+                <div style={{ display: "flex", gap: 4 }}>
+                  {[["both", "↑↓ Both"], ["upload", "↑ Up"], ["offload", "↓ Off"], ["none", "— None"]].map(([v, l]) => (
+                    <button key={v}
+                      onClick={() => setEditModal({ ...editModal, cargoOp: v })}
+                      style={{
+                        flex: 1, padding: "4px 2px", borderRadius: 5, cursor: "pointer",
+                        fontFamily: FONT, fontSize: 9, fontWeight: 600,
+                        border: `2px solid ${(editModal.cargoOp || "none") === v ? C.brownDark : C.brownLight}`,
+                        background: (editModal.cargoOp || "none") === v ? C.brownPale : C.white,
+                        color: (editModal.cargoOp || "none") === v ? C.brownDark : C.textSoft,
+                      }}
+                    >{l}</button>
+                  ))}
+                </div>
               </div>
-            </>
+            </div>
           )}
 
-          {/* Customer */}
           <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Customer</label>
           <CustomerTagInput
             value={editModal.customer || ""}
             onChange={v => setEditModal({ ...editModal, customer: v })}
             flights={flights}
-            style={{ marginBottom: 8 }}
+            style={{ marginBottom: 6 }}
           />
 
-          {/* Inline validation feedback */}
+          {/* ── Validation warnings ───────────────────────────────── */}
           {(() => {
             const { errors, warnings } = validateFlight({ ...editModal, route: editRoute || editModal.route });
             if (!errors.length && !warnings.length) return null;
             return (
-              <div style={{ marginBottom: 8 }}>
+              <div style={{ marginTop: 6, marginBottom: 4, padding: "6px 10px", borderRadius: 5, background: errors.length ? C.dangerLight : C.warnLight, border: `1px solid ${errors.length ? C.danger : C.yellowHeavy}` }}>
                 {errors.map((e, i) => (
-                  <div key={`e${i}`} style={{ fontSize: 10, color: C.danger, marginBottom: 2 }}>✕ {e}</div>
+                  <div key={`e${i}`} style={{ fontSize: 10, color: C.danger, marginBottom: 1 }}>✕ {e}</div>
                 ))}
                 {warnings.map((w, i) => (
-                  <div key={`w${i}`} style={{ fontSize: 10, color: C.yellowHeavy, marginBottom: 2 }}>⚠︎ {w}</div>
+                  <div key={`w${i}`} style={{ fontSize: 10, color: C.yellowHeavy, marginBottom: 1 }}>⚠︎ {w}</div>
                 ))}
               </div>
             );
           })()}
 
-          <Divider />
+          {/* ── Actions ───────────────────────────────────────────── */}
+          <div style={{ height: 1, background: C.brownLight, margin: "12px 0" }} />
           <div style={{ display: "flex", gap: 8 }}>
             <PrimaryBtn onClick={saveEdit}>Save Changes</PrimaryBtn>
             <SecondaryBtn onClick={() => setEditModal(null)}>Cancel</SecondaryBtn>
