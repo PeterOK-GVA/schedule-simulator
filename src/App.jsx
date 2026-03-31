@@ -7,8 +7,8 @@ import { Scatter, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveCo
 // ╚═══════════════════════════════════════════════════════════════════════════╝
 
 const FIREBASE = {
-  apiKey: "AIzaSyDDqSlBciiBgENypYa57igEo-I6GxGBFEM",
-  projectId: "msc-schedule-sim",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "msc-schedule-sim",
 };
 const FS_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents`;
 
