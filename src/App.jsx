@@ -13697,11 +13697,26 @@ function AppShell() {
       if (!orig || !dest || !stdZ || !dowZ) return;
 
       const depMins = minsFromHHMM(stdZ) || 0;
-      let staMins   = minsFromHHMM(staZ) || 0;
-      if (plusOne === "+1" || plusOne === "1") staMins += DAY_MINS;
-      else if (plusOne === "+2" || plusOne === "2") staMins += DAY_MINS * 2;
-      const blockMins = staMins > depMins ? staMins - depMins : (staMins + DAY_MINS - depMins);
-      if (blockMins <= 0 || blockMins > DAY_MINS * 2) return;
+      let blockMins;
+      if (staZ) {
+        let staMins = minsFromHHMM(staZ) || 0;
+        if (plusOne === "+1" || plusOne === "1") staMins += DAY_MINS;
+        else if (plusOne === "+2" || plusOne === "2") staMins += DAY_MINS * 2;
+        blockMins = staMins > depMins ? staMins - depMins : (staMins + DAY_MINS - depMins);
+      } else {
+        // No STA provided — look up block time from route table or estimate
+        const route = `${orig}-${dest}`;
+        const impAoc = tail ? deriveAoc(tail).code : null;
+        const entry = resolveBlockEntry(blockTable, route, impAoc, flightNum);
+        const tbl = entry ? extractBlock(entry, activeSeason) : null;
+        if (tbl && tbl > 0) {
+          blockMins = tbl;
+        } else {
+          const est = estimateBlock(orig, dest, activeSeason);
+          blockMins = est ? est.blockMins : null;
+        }
+      }
+      if (!blockMins || blockMins <= 0 || blockMins > DAY_MINS * 2) return;
 
       const days = [];
       const dowTrimmed = String(dowZ).trim();
