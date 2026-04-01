@@ -5941,7 +5941,7 @@ function useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveR
           if (targetAc) updates.acId = targetAc.id;
           dispatchRef.current({ type: A.UPDATE_FLIGHT, flight: updates, _noHistory: true });
 
-          // Update group flights — maintain relative spacing
+          // Update group flights — maintain relative spacing and same target aircraft
           if (drag.groupFlights) {
             const anchorWM = weekMins(drag.finalDay, drag.finalDep);
             for (const gf of drag.groupFlights) {
@@ -5950,7 +5950,9 @@ function useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveR
               if (gWM >= WEEK_MINS) gWM -= WEEK_MINS;
               const gDay = Math.floor(gWM / DAY_MINS) + 1;
               const gDep = Math.round(gWM % DAY_MINS);
-              dispatchRef.current({ type: A.UPDATE_FLIGHT, flight: { id: gf.id, day: gDay, dep: gDep }, _noHistory: true });
+              const gUpdate = { id: gf.id, day: gDay, dep: gDep };
+              if (targetAc) gUpdate.acId = targetAc.id;
+              dispatchRef.current({ type: A.UPDATE_FLIGHT, flight: gUpdate, _noHistory: true });
             }
           }
         }
