@@ -5694,7 +5694,7 @@ function useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveR
   }
 
   const DRAG_THRESHOLD = 3;
-  const DRAG_TIME_THRESHOLD = 150; // ms — don't engage drag until held this long (protects double-click)
+  const DRAG_TIME_THRESHOLD = 50; // ms — brief hold before engaging drag (double-click is protected by clickTimerRef)
 
   // ── Start drag — NO React state changes (no re-render) ───────────
   const startDrag = useCallback((e, flightId) => {
