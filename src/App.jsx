@@ -253,8 +253,7 @@ const MX_STYLE_DARK  = { bg: "#2D1520", stroke: "#C4607A", hatch: "#C4607A", hat
 function MX_STYLE() { return C === C_DARK ? MX_STYLE_DARK : MX_STYLE_LIGHT; }
 
 // ── Cargo ground-time constants ──────────────────────────────────────────────
-const CARGO_MIN_TURN       = 180; // 3 h for full cargo turn (offload + upload at same station)
-const CARGO_PARTIAL_TURN   = 120; // 2 h for one-sided cargo op (offload-only or upload-only at station)
+const CARGO_MIN_TURN       = 180; // 3 h for any cargo turn (offload, upload, or both at station)
 
 // ── Maintenance base configuration ──────────────────────────────────────────
 // Tier A = full heavy maintenance (C-check capable)
@@ -3992,8 +3991,7 @@ function localTime(utcMins, utcOffset) {
 }
 
 /** Minimum turnaround based on cargo ops at the station between two flights
- *  - 3h full cargo turn: offload + upload at same station (both sides active)
- *  - 2h partial cargo turn: offload only → ferry, or ferry → upload only
+ *  - 3h cargo turn: any cargo handling at the station (offload, upload, or both)
  *  - 1.5h tech stop: no cargo handling (ferry-to-ferry, or mid-rotation tech stops
  *    e.g. upload → [none → none] → offload — the middle turns are all tech stops) */
 function getMinTurnFromPair(arrivingFlight, departingFlight) {
@@ -4009,16 +4007,11 @@ function getMinTurnFromPair(arrivingFlight, departingFlight) {
   // At this station: does cargo go ON for the departing flight?
   const uplifting  = !dNoCargo && (departingFlight?.cargoOp === "upload"  || departingFlight?.cargoOp === "both");
 
-  // Both offload and upload at this station → full cargo turn (3h)
-  if (offloading && uplifting) return { mins: CARGO_MIN_TURN, label: "full cargo turn" };
-  // Only one side: offload into nothing (→ ferry) or ferry → upload (2h)
-  if (offloading || uplifting) return { mins: CARGO_PARTIAL_TURN, label: "partial cargo turn" };
+  // Any cargo handling at this station → 3h cargo turn
+  if (offloading || uplifting) return { mins: CARGO_MIN_TURN, label: "cargo turn" };
   // Neither: tech stop / ferry-to-ferry (1.5h)
   return { mins: MIN_TURN, label: "tech stop" };
 }
-
-/** Is the gap below minimum turn? */
-function turnIsViolation(gap, minT) { return gap < minT; }
 
 /** IATA season from date string: Summer = last Sun of Mar → last Sat of Oct */
 function deriveSeason(dateStr) {
@@ -9308,7 +9301,8 @@ function DashboardTab() {
 }
 
 function ScheduleTableTab() {
-  const { flights, aircraft, airports, activeSeason, scenarioName, lookupAirport, lookupBlock, flightAoc, rotations, dispatch } = useSchedule();
+  const { flights, aircraft, airports, activeSeason, scenarioName, lookupAirport, lookupBlock, lookupBlockEntry, lookupPayload, flightAoc, rotations, dispatch } = useSchedule();
+  const { validateFlight } = useScheduleValidation();
   const ui = useUI();
   const [sortKey, setSortKey]     = useState("sequence");
   const [sortDir, setSortDir]     = useState(1);
@@ -9956,15 +9950,17 @@ function ScheduleTableTab() {
         </table>
       </div>
 
-      {/* ── Flight edit modal (same as Gantt) ────────────────────────── */}
+      {/* ── Flight edit modal (matches Gantt layout) ────────────────── */}
       {schedEditModal && (() => {
         const m = schedEditModal;
         const editRoute = m.depApt && m.arrApt ? `${m.depApt}-${m.arrApt}` : "";
         const editAoc = flightAoc(m.acId);
-        const editBlock = editRoute ? lookupBlock(editRoute, editAoc, m.flightNum) : null;
+        const editPayload = editRoute ? lookupPayload(editRoute, editAoc, m.flightNum) : null;
         return (
-          <Modal title="Edit Flight" onClose={() => setSchedEditModal(null)} width={380}>
-            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+          <Modal title="Edit Flight" onClose={() => setSchedEditModal(null)} width={400}>
+
+            {/* ── Section: Identity ──────────────────────────────── */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
               <div style={{ width: 120 }}>
                 <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Flight No</label>
                 <input style={iStyle} placeholder="CP 192" value={m.flightNum || ""}
@@ -9978,31 +9974,86 @@ function ScheduleTableTab() {
                 </select>
               </div>
             </div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Dep</label>
-                <input style={{ ...iStyle, fontFamily: MONO, textTransform: "uppercase", letterSpacing: 1 }} placeholder="LGG" maxLength={4} value={m.depApt || ""}
-                  onChange={e => setSchedEditModal({ ...m, depApt: e.target.value.toUpperCase() })} />
+
+            {/* ── Section: Route ─────────────────────────────────── */}
+            <div style={{ padding: "10px 12px", marginBottom: 10, borderRadius: 6, background: C.offWhite2, border: `1px solid ${C.brownLight}` }}>
+              <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Dep</label>
+                  <input style={{ ...iStyle, fontFamily: MONO, textTransform: "uppercase", letterSpacing: 1 }} placeholder="LGG" maxLength={4} value={m.depApt || ""}
+                    onChange={e => setSchedEditModal({ ...m, depApt: e.target.value.toUpperCase() })} />
+                </div>
+                <div style={{ display: "flex", alignItems: "center", paddingTop: 14, color: C.textMuted, fontSize: 14 }}>→</div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Arr</label>
+                  <input style={{ ...iStyle, fontFamily: MONO, textTransform: "uppercase", letterSpacing: 1 }} placeholder="JFK" maxLength={4} value={m.arrApt || ""}
+                    onChange={e => setSchedEditModal({ ...m, arrApt: e.target.value.toUpperCase() })} />
+                </div>
               </div>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Arr</label>
-                <input style={{ ...iStyle, fontFamily: MONO, textTransform: "uppercase", letterSpacing: 1 }} placeholder="JFK" maxLength={4} value={m.arrApt || ""}
-                  onChange={e => setSchedEditModal({ ...m, arrApt: e.target.value.toUpperCase() })} />
-              </div>
+              <CurfewInfo depApt={m.depApt} arrApt={m.arrApt} lookupAirport={lookupAirport} />
+              {editRoute && (() => {
+                const entry = lookupBlockEntry(editRoute, flightAoc(m.acId), m.flightNum);
+                if (entry) {
+                  const perfVal = activeSeason === "W" ? entry.W : entry.S;
+                  const opsVal = activeSeason === "W" ? entry.opW : entry.opS;
+                  const parts = [];
+                  if (opsVal > 0) parts.push(`ops: ${fmtBT(opsVal)}`);
+                  if (perfVal > 0) parts.push(`perf: ${fmtBT(perfVal)}`);
+                  return (
+                    <div style={{ fontSize: 9, color: C.textSoft, marginTop: 2 }}>
+                      {parts.join(" · ")}
+                      {editPayload != null && ` · ${fmtKg(editPayload)} payload`}
+                      {" "}({activeSeason === "W" ? "Winter" : "Summer"})
+                    </div>
+                  );
+                }
+                const [d, a] = editRoute.split("-");
+                const est = d && a ? estimateBlock(d, a, activeSeason) : null;
+                if (est) {
+                  return (
+                    <div style={{ fontSize: 9, color: C.yellowHeavy, marginTop: 2 }}>
+                      ≈ Estimated: {fmtBT(est.blockMins)} block · {fmtKg(est.payloadKg)} payload · {fmtNum(est.dist, 0)} km {est.dir}
+                    </div>
+                  );
+                }
+                return null;
+              })()}
             </div>
-            <CurfewInfo depApt={m.depApt} arrApt={m.arrApt} lookupAirport={lookupAirport} />
-            {/* Block time — editable override */}
-            {(() => {
-              const currentBlock = m.block;
-              const fmtBT = (v) => { const h = Math.floor(v/60), mn = v%60; return h > 0 ? `${h}h ${mn > 0 ? `${mn}m` : ""}`.trim() : `${mn}m`; };
-              const correctBlock = editBlock;
-              const isOverridden = correctBlock && currentBlock !== correctBlock;
-              const blockHH = String(Math.floor(currentBlock / 60)).padStart(2, "0");
-              const blockMM = String(currentBlock % 60).padStart(2, "0");
-              return (
-                <div style={{ marginBottom: 8 }}>
+
+            {/* ── Section: Schedule ──────────────────────────────── */}
+            <div style={{ padding: "10px 12px", marginBottom: 10, borderRadius: 6, background: C.offWhite2, border: `1px solid ${C.brownLight}` }}>
+              <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "flex-end" }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Day of Week</label>
+                  <DaySelector value={m.day || 1} onChange={v => setSchedEditModal({ ...m, day: v })} />
+                </div>
+                <div style={{ width: 100 }}>
+                  <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>STD (UTC)</label>
+                  <input style={iStyle} type="time" value={toHHMM(m.dep)}
+                    onChange={e => { const [hh, mm] = e.target.value.split(":").map(Number); setSchedEditModal({ ...m, dep: hh * 60 + mm }); }} />
+                </div>
+              </div>
+              {/* Block time — editable */}
+              {(() => {
+                const currentBlock = m.block;
+                const blockEntry = editRoute ? lookupBlockEntry(editRoute, flightAoc(m.acId), m.flightNum) : null;
+                const perfBlock = blockEntry ? (activeSeason === "W" ? blockEntry.W : blockEntry.S) : null;
+                const opsBlock = blockEntry ? (activeSeason === "W" ? blockEntry.opW : blockEntry.opS) : null;
+                const validPerf = perfBlock && perfBlock > 0 ? perfBlock : null;
+                const validOps = opsBlock && opsBlock > 0 ? opsBlock : null;
+                const estBlock = !blockEntry ? (() => {
+                  const [d, a] = (editRoute || "").split("-");
+                  const est = d && a ? estimateBlock(d, a, activeSeason) : null;
+                  return est ? est.blockMins : null;
+                })() : null;
+                const correctBlock = validOps || validPerf || estBlock;
+                const correctSrc = validOps ? "operational" : validPerf ? "performance" : estBlock ? "estimated" : null;
+                const isOverridden = correctBlock && currentBlock !== correctBlock;
+                const blockHH = String(Math.floor(currentBlock / 60)).padStart(2, "0");
+                const blockMM = String(currentBlock % 60).padStart(2, "0");
+                return (
                   <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
-                    <div style={{ width: 120 }}>
+                    <div style={{ width: 100 }}>
                       <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Block Time</label>
                       <input style={{ ...iStyle, fontFamily: MONO, fontWeight: 700, color: isOverridden ? C.yellowHeavy : C.brownDark }}
                         type="time" value={`${blockHH}:${blockMM}`}
@@ -10012,44 +10063,27 @@ function ScheduleTableTab() {
                         }} />
                     </div>
                     <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2, paddingBottom: 4 }}>
-                      {correctBlock && (
-                        <span style={{ fontSize: 9, color: C.textMuted }}>
-                          Route table: {fmtBT(correctBlock)} ({activeSeason === "W" ? "Winter" : "Summer"})
-                        </span>
-                      )}
-                      {isOverridden && (
-                        <span style={{ fontSize: 9, color: C.yellowHeavy, fontWeight: 600 }}>Manual override active</span>
-                      )}
-                      {!isOverridden && correctBlock && (
-                        <span style={{ fontSize: 9, color: C.success }}>✓ matches route table</span>
-                      )}
+                      {isOverridden ? (
+                        <>
+                          <span style={{ fontSize: 9, color: C.yellowHeavy, fontWeight: 600 }}>Override — table: {fmtBT(correctBlock)} ({correctSrc})</span>
+                          <button onClick={() => setSchedEditModal({ ...m, block: correctBlock })}
+                            style={{
+                              background: "none", color: C.yellowHeavy, border: `1px solid ${C.yellowHeavy}`,
+                              padding: "1px 8px", borderRadius: 3, fontSize: 9, fontWeight: 600,
+                              fontFamily: FONT, cursor: "pointer", alignSelf: "flex-start",
+                            }}>Reset</button>
+                        </>
+                      ) : correctBlock ? (
+                        <span style={{ fontSize: 9, color: C.success }}>✓ {correctSrc}{validOps && validPerf && validOps !== validPerf ? ` · perf: ${fmtBT(validPerf)}` : ""}</span>
+                      ) : null}
                     </div>
                   </div>
-                  {isOverridden && correctBlock && (
-                    <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
-                      <button onClick={() => setSchedEditModal({ ...m, block: correctBlock })}
-                        style={{
-                          background: C.yellowHeavy, color: "#fff",
-                          border: "none", padding: "3px 10px", borderRadius: 4,
-                          fontSize: 10, fontWeight: 700, fontFamily: FONT, cursor: "pointer",
-                        }}>Reset to route table ({fmtBT(correctBlock)})</button>
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-            <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "flex-end" }}>
-              <div style={{ flex: 1 }}>
-                <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Day of Week</label>
-                <DaySelector value={m.day || 1} onChange={v => setSchedEditModal({ ...m, day: v })} />
-              </div>
-              <div style={{ width: 120 }}>
-                <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>STD (UTC)</label>
-                <input style={iStyle} type="time" value={toHHMM(m.dep)}
-                  onChange={e => { const [hh, mm] = e.target.value.split(":").map(Number); setSchedEditModal({ ...m, dep: hh * 60 + mm }); }} />
-              </div>
+                );
+              })()}
             </div>
-            <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Flight Type</label>
+
+            {/* ── Section: Classification ────────────────────────── */}
+            <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 4 }}>Flight Type</label>
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 8 }}>
               {FLIGHT_TYPE_LIST().map(ft => (
                 <button key={ft.code} title={`${ft.code} – ${ft.label}`}
@@ -10057,8 +10091,8 @@ function ScheduleTableTab() {
                   style={{
                     padding: "4px 8px", borderRadius: 5, cursor: "pointer", fontFamily: FONT, fontSize: 10, fontWeight: 600,
                     border: `2px solid ${m.type === ft.code ? C.brownDark : C.brownLight}`,
-                    background: m.type === ft.code ? ft.bg : C.white,
-                    color: m.type === ft.code ? ft.txt : C.textSoft,
+                    background: m.type === ft.code ? C.brownPale : C.white,
+                    color: m.type === ft.code ? C.brownDark : C.textSoft,
                     display: "flex", alignItems: "center", gap: 3,
                   }}>
                   <span style={{ width: 8, height: 8, borderRadius: 2, background: ft.bg, border: `1px solid ${ft.bdr}`, display: "inline-block", flexShrink: 0 }} />
@@ -10067,24 +10101,44 @@ function ScheduleTableTab() {
               ))}
             </div>
             {["F", "H"].includes(m.type) && (
-              <>
-                <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Cargo Movement</label>
-                <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                  {[["both", "↑↓ Both"], ["upload", "↑ Uplift"], ["offload", "↓ Offload"], ["none", "— None"]].map(([v, l]) => (
-                    <button key={v} onClick={() => setSchedEditModal({ ...m, cargoOp: v })}
-                      style={{
-                        flex: 1, padding: "4px", borderRadius: 5, cursor: "pointer", fontFamily: FONT, fontSize: 10, fontWeight: 600,
-                        border: `2px solid ${(m.cargoOp || "none") === v ? C.brownDark : C.brownLight}`,
-                        background: (m.cargoOp || "none") === v ? C.brownPale : C.white,
-                        color: (m.cargoOp || "none") === v ? C.brownDark : C.textSoft,
-                      }}>{l}</button>
-                  ))}
+              <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "flex-end" }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Cargo Movement</label>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    {[["both", "↑↓ Both"], ["upload", "↑ Up"], ["offload", "↓ Off"], ["none", "— None"]].map(([v, l]) => (
+                      <button key={v} onClick={() => setSchedEditModal({ ...m, cargoOp: v })}
+                        style={{
+                          flex: 1, padding: "4px 2px", borderRadius: 5, cursor: "pointer", fontFamily: FONT, fontSize: 9, fontWeight: 600,
+                          border: `2px solid ${(m.cargoOp || "none") === v ? C.brownDark : C.brownLight}`,
+                          background: (m.cargoOp || "none") === v ? C.brownPale : C.white,
+                          color: (m.cargoOp || "none") === v ? C.brownDark : C.textSoft,
+                        }}>{l}</button>
+                    ))}
+                  </div>
                 </div>
-              </>
+              </div>
             )}
             <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Customer</label>
-            <CustomerTagInput value={m.customer || ""} onChange={v => setSchedEditModal({ ...m, customer: v })} flights={flights} style={{ marginBottom: 8 }} />
-            <Divider />
+            <CustomerTagInput value={m.customer || ""} onChange={v => setSchedEditModal({ ...m, customer: v })} flights={flights} style={{ marginBottom: 6 }} />
+
+            {/* ── Validation warnings ─────────────────────────────── */}
+            {(() => {
+              const { errors, warnings } = validateFlight({ ...m, route: editRoute || m.route });
+              if (!errors.length && !warnings.length) return null;
+              return (
+                <div style={{ marginTop: 6, marginBottom: 4, padding: "6px 10px", borderRadius: 5, background: errors.length ? C.dangerLight : C.warnLight, border: `1px solid ${errors.length ? C.danger : C.yellowHeavy}` }}>
+                  {errors.map((e, i) => (
+                    <div key={`e${i}`} style={{ fontSize: 10, color: C.danger, marginBottom: 1 }}>✕ {e}</div>
+                  ))}
+                  {warnings.map((w, i) => (
+                    <div key={`w${i}`} style={{ fontSize: 10, color: C.yellowHeavy, marginBottom: 1 }}>⚠︎ {w}</div>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {/* ── Actions ─────────────────────────────────────────── */}
+            <div style={{ height: 1, background: C.brownLight, margin: "12px 0" }} />
             <div style={{ display: "flex", gap: 8 }}>
               <PrimaryBtn onClick={saveSchedEdit}>Save Changes</PrimaryBtn>
               <SecondaryBtn onClick={() => setSchedEditModal(null)}>Cancel</SecondaryBtn>
