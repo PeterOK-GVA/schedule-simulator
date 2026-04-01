@@ -5726,6 +5726,9 @@ function useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveR
         }));
     }
 
+    // Capture original row Y for vertical visual offset during drag
+    const origRowY = rowLayoutRef?.current?.ys?.[origRowIdx]?.y ?? 0;
+
     dragRef.current = {
       id:           flightId,
       startX:       cx,
@@ -5733,6 +5736,8 @@ function useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveR
       origWeekMins: weekMins(f.day || 1, f.dep),
       origAcId:     f.acId,
       targetRowIdx: origRowIdx,
+      origRowIdx,
+      origRowY,
       finalDay:     f.day || 1,
       finalDep:     f.dep,
       origBlock:    f.block,
@@ -5794,10 +5799,27 @@ function useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveR
           snappedDx = (actualDeltaMin / 60) * hourWRef.current;
         }
 
+        // Compute vertical offset to target row + track target for mouseup
+        let snappedDy = 0;
+        if (svgRef.current && rowLayoutRef?.current) {
+          const rect = svgRef.current.getBoundingClientRect();
+          const svgY = cy - rect.top + (svgRef.current.parentElement?.scrollTop || 0);
+          if (svgY >= HEADER_H) {
+            const { ys } = rowLayoutRef.current;
+            let rowIdx = ys.length - 1;
+            for (let r = 0; r < ys.length; r++) {
+              if (svgY < ys[r].y + ys[r].h) { rowIdx = r; break; }
+            }
+            drag.targetRowIdx = Math.max(0, Math.min(aircraftRef.current.length - 1, rowIdx));
+            const targetRowY = ys[rowIdx]?.y ?? drag.origRowY;
+            snappedDy = targetRowY - drag.origRowY;
+          }
+        }
+
         // Move the SVG group to the SNAPPED position — NO state dispatch
         const el = svgRef.current?.querySelector(`[data-flight-id="${drag.id}"]`);
         if (el) {
-          el.setAttribute("transform", shiftHeld ? "" : `translate(${snappedDx},0)`);
+          el.setAttribute("transform", shiftHeld ? "" : `translate(${snappedDx},${snappedDy})`);
           el.style.opacity = "0.7";
         }
 
@@ -5806,7 +5828,7 @@ function useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveR
           for (const gf of drag.groupFlights) {
             const gEl = svgRef.current?.querySelector(`[data-flight-id="${gf.id}"]`);
             if (gEl) {
-              gEl.setAttribute("transform", `translate(${snappedDx},0)`);
+              gEl.setAttribute("transform", `translate(${snappedDx},${snappedDy})`);
               gEl.style.opacity = "0.7";
             }
           }
@@ -5875,19 +5897,7 @@ function useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveR
           if (activeBg) activeBg.setAttribute("width", "0");
         }
 
-        // Track target row for aircraft reassignment on mouseup
-        if (svgRef.current) {
-          const rect = svgRef.current.getBoundingClientRect();
-          const svgY = cy - rect.top + (svgRef.current.parentElement?.scrollTop || 0);
-          if (svgY >= HEADER_H && rowLayoutRef?.current) {
-            const { ys } = rowLayoutRef.current;
-            let rowIdx = ys.length - 1;
-            for (let r = 0; r < ys.length; r++) {
-              if (svgY < ys[r].y + ys[r].h) { rowIdx = r; break; }
-            }
-            drag.targetRowIdx = Math.max(0, Math.min(aircraftRef.current.length - 1, rowIdx));
-          }
-        }
+        // (target row tracking is handled above in the vertical offset computation)
       }
 
       // ── Resize: store in ref, dispatch on mouseup ──────────────
