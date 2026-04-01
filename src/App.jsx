@@ -5672,7 +5672,7 @@ function useScheduleValidation() {
  *   isDragging                    — true while a drag-move is active
  *   isResizing                    — true while a resize is active
  */
-function useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveRef) {
+function useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveRef, selectedRef) {
   const { flights, aircraft, dispatch } = useSchedule();
 
   const hourWRef = useRef(hourW);
@@ -5710,6 +5710,22 @@ function useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveR
 
     dragEngagedRef.current = false;
 
+    // Multi-select: if dragged flight is in selection and multiple are selected, capture group
+    const sel = selectedRef?.current;
+    const isMulti = sel && sel.size > 1 && sel.has(flightId);
+    let groupFlights = null;
+    if (isMulti) {
+      const anchorWM = weekMins(f.day || 1, f.dep);
+      groupFlights = flightsRef.current
+        .filter(x => sel.has(x.id) && x.id !== flightId)
+        .map(x => ({
+          id: x.id,
+          offsetWM: weekMins(x.day || 1, x.dep) - anchorWM,
+          origDay: x.day || 1,
+          origDep: x.dep,
+        }));
+    }
+
     dragRef.current = {
       id:           flightId,
       startX:       cx,
@@ -5720,6 +5736,7 @@ function useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveR
       finalDay:     f.day || 1,
       finalDep:     f.dep,
       origBlock:    f.block,
+      groupFlights, // null for single drag, array for multi
     };
   }, []);
 
@@ -5782,6 +5799,17 @@ function useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveR
         if (el) {
           el.setAttribute("transform", shiftHeld ? "" : `translate(${snappedDx},0)`);
           el.style.opacity = "0.7";
+        }
+
+        // Multi-select: move group flights with the same visual offset
+        if (drag.groupFlights && !shiftHeld) {
+          for (const gf of drag.groupFlights) {
+            const gEl = svgRef.current?.querySelector(`[data-flight-id="${gf.id}"]`);
+            if (gEl) {
+              gEl.setAttribute("transform", `translate(${snappedDx},0)`);
+              gEl.style.opacity = "0.7";
+            }
+          }
         }
 
         // Show live time label during drag
@@ -5887,12 +5915,34 @@ function useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveR
         const lblBg = svgRef.current?.querySelector(`[data-drag-label-bg="${drag.id}"]`);
         if (lblBg) lblBg.remove();
 
+        // Clean up group flight transforms
+        if (drag.groupFlights) {
+          for (const gf of drag.groupFlights) {
+            const gEl = svgRef.current?.querySelector(`[data-flight-id="${gf.id}"]`);
+            if (gEl) { gEl.removeAttribute("transform"); gEl.style.opacity = ""; }
+          }
+        }
+
         if (dragEngagedRef.current) {
           dispatchRef.current({ type: A.HISTORY_PUSH });
+          // Update anchor flight
           const updates = { id: drag.id, day: drag.finalDay, dep: drag.finalDep };
           const targetAc = aircraftRef.current[drag.targetRowIdx];
           if (targetAc) updates.acId = targetAc.id;
           dispatchRef.current({ type: A.UPDATE_FLIGHT, flight: updates, _noHistory: true });
+
+          // Update group flights — maintain relative spacing
+          if (drag.groupFlights) {
+            const anchorWM = weekMins(drag.finalDay, drag.finalDep);
+            for (const gf of drag.groupFlights) {
+              let gWM = anchorWM + gf.offsetWM;
+              if (gWM < 0) gWM += WEEK_MINS;
+              if (gWM >= WEEK_MINS) gWM -= WEEK_MINS;
+              const gDay = Math.floor(gWM / DAY_MINS) + 1;
+              const gDep = Math.round(gWM % DAY_MINS);
+              dispatchRef.current({ type: A.UPDATE_FLIGHT, flight: { id: gf.id, day: gDay, dep: gDep }, _noHistory: true });
+            }
+          }
         }
       }
 
@@ -6661,7 +6711,9 @@ function GanttTab() {
   const dragActiveRef = useRef(false); // Set by flight/MX drag to suppress pan and tooltip
   const clickTimerRef = useRef(null);  // Delays single-click to disambiguate from double-click
   const pendingDragRef = useRef(null); // Timeout ID for deferred drag start (protects double-click)
-  const { startDrag, startResize, dragEngagedRef } = useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveRef);
+  const selectedRef = useRef(selected);
+  useEffect(() => { selectedRef.current = selected; }, [selected]);
+  const { startDrag, startResize, dragEngagedRef } = useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveRef, selectedRef);
 
   // Ctrl+wheel zoom on Gantt
   useEffect(() => {
