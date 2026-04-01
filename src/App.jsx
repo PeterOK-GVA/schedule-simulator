@@ -12553,9 +12553,12 @@ function FeasibilityTab() {
 // ── Compare Tab ──────────────────────────────────────────────────────────────
 
 function CompareTab() {
-  const { flights, aircraft, blockTable, airports, scenarioName, scheduleDate } = useSchedule();
+  const { flights, aircraft, blockTable, airports, scenarioName, scheduleDate, activeSeason } = useSchedule();
   const repo = useVersionRepo();
   const { monthGroups, loading, deleteEntry, loadEntry } = repo;
+  const cloud = useCloudScenarios();
+  const [showUnchanged, setShowUnchanged] = useState(false);
+  const [filter, setFilter] = useState("all"); // all | added | removed | changed
 
   const CURRENT_KEY = "__current__";
   const [pickA, setPickA] = useState(CURRENT_KEY);
@@ -12563,8 +12566,6 @@ function CompareTab() {
   const [dataA, setDataA] = useState(null);
   const [dataB, setDataB] = useState(null);
   const [loadingData, setLoadingData] = useState(false);
-  const [repoOpen, setRepoOpen] = useState(true);
-  const [expandedMonths, setExpandedMonths] = useState({});
 
   const currentData = useMemo(() => ({
     name: scenarioName || "Working Schedule",
@@ -12575,66 +12576,96 @@ function CompareTab() {
     let cancelled = false;
     async function load() {
       setLoadingData(true);
-      const a = pickA === CURRENT_KEY ? currentData : await loadEntry(pickA);
-      const b = pickB === CURRENT_KEY ? currentData : await loadEntry(pickB);
+      let a, b;
+      if (pickA === CURRENT_KEY) a = currentData;
+      else if (pickA.startsWith("sc:")) { const d = await cloud.loadScenario(pickA.slice(3)); a = d ? { ...d, name: d.name || d.scenarioName || "Scenario" } : null; }
+      else a = await loadEntry(pickA);
+      if (pickB === CURRENT_KEY) b = currentData;
+      else if (pickB.startsWith("sc:")) { const d = await cloud.loadScenario(pickB.slice(3)); b = d ? { ...d, name: d.name || d.scenarioName || "Scenario" } : null; }
+      else b = await loadEntry(pickB);
       if (!cancelled) { setDataA(a); setDataB(b); setLoadingData(false); }
     }
     load();
     return () => { cancelled = true; };
-  }, [pickA, pickB, currentData, loadEntry]);
+  }, [pickA, pickB, currentData, loadEntry, cloud.loadScenario]);
 
-  const fmtDate = (iso) => {
-    if (!iso) return "";
-    try { return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }); }
-    catch (_) { return iso; }
-  };
-
-  // Build flat options for pickers
+  // Build flat options: current + scenarios + version repo
   const options = useMemo(() => {
     const o = [{ key: CURRENT_KEY, label: `Current — ${scenarioName || "Working"}`, group: "Current" }];
+    if (cloud.scenarios.length > 0) {
+      cloud.scenarios.forEach(sc => o.push({ key: `sc:${sc.id}`, label: `${sc.name}`, group: "Scenarios" }));
+    }
     monthGroups.forEach(mg => {
       if (mg.baseline) o.push({ key: mg.baseline.key, label: `${mg.label} Baseline`, group: mg.label });
       mg.versions.forEach(v => o.push({ key: v.key, label: `${mg.label} — ${v.title || "Untitled"}`, group: mg.label }));
     });
     return o;
-  }, [monthGroups, scenarioName]);
+  }, [monthGroups, scenarioName, cloud.scenarios]);
 
-  if (loading) return <div style={{ padding: 60, textAlign: "center", color: C.textMuted, fontFamily: FONT }}>Loading repository…</div>;
+  if (loading || cloud.loading) return <div style={{ padding: 60, textAlign: "center", color: C.textMuted, fontFamily: FONT }}>Loading…</div>;
 
-  const hasAnyData = monthGroups.length > 0;
-
-  // ── Diff logic ─────────────────────────────────────────────────────
-  function patternKey(f) { return `${f.route}|${f.dep}|${f.block}|${f.type}`; }
-  function buildPatterns(fList, acList) {
+  // ── Diff logic — flight-level comparison ───────────────────────────
+  // Key each flight by: flightNum + route + day (unique per operational flight)
+  function flightKey(f) {
+    return `${(f.flightNum || "").trim()}|${f.route}|${f.day || 1}`;
+  }
+  function buildFlightMap(fList, acList) {
     const map = {};
+    const acMap = {};
+    (acList || []).forEach(a => { acMap[a.id] = a.reg || ""; });
     (fList || []).forEach(f => {
-      const k = patternKey(f);
-      if (!map[k]) map[k] = { key: k, route: f.route, dep: f.dep, block: f.block, type: f.type, days: [], tail: (acList || []).find(a => a.id === f.acId)?.reg || "" };
-      map[k].days.push(f.day || 1);
+      const k = flightKey(f);
+      // If duplicate key (e.g. same flight number, route, day), append index
+      const key = map[k] ? `${k}|${map[k].dupes = (map[k].dupes || 0) + 1}` : k;
+      map[key === k ? k : key] = {
+        key: key === k ? k : key,
+        flightNum: (f.flightNum || "").trim(),
+        route: f.route || "",
+        dep: f.dep,
+        block: f.block,
+        day: f.day || 1,
+        type: f.type || "F",
+        tail: acMap[f.acId] || "",
+        cargoOp: f.cargoOp || "both",
+        customer: f.customer || "",
+      };
     });
     return map;
   }
 
   const canCompare = dataA && dataB && pickA !== pickB && !loadingData;
   let rows = [], counts = { added: 0, removed: 0, changed: 0, unchanged: 0 };
+  const dayNames = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
   if (canCompare) {
-    const pA = buildPatterns(dataA.flights, dataA.aircraft);
-    const pB = buildPatterns(dataB.flights, dataB.aircraft);
-    const allKeys = new Set([...Object.keys(pA), ...Object.keys(pB)]);
+    const mapA = buildFlightMap(dataA.flights, dataA.aircraft);
+    const mapB = buildFlightMap(dataB.flights, dataB.aircraft);
+    const allKeys = new Set([...Object.keys(mapA), ...Object.keys(mapB)]);
     rows = [...allKeys].map(k => {
-      const a = pA[k], b = pB[k];
+      const a = mapA[k], b = mapB[k];
       let status = "unchanged";
-      if (a && !b) status = "removed";
-      else if (!a && b) status = "added";
-      else if (a && b) {
-        const ad = [...a.days].sort().join(","), bd = [...b.days].sort().join(",");
-        if (a.dep !== b.dep || a.block !== b.block || ad !== bd) status = "changed";
+      let changes = [];
+      if (a && !b) {
+        status = "removed";
+        changes.push(`Remove ${a.flightNum || a.route} on ${dayNames[(a.day - 1) % 7]}`);
+      } else if (!a && b) {
+        status = "added";
+        changes.push(`Add ${b.flightNum || b.route} on ${dayNames[(b.day - 1) % 7]} dep ${toHHMM(b.dep)} (${b.tail})`);
+      } else if (a && b) {
+        if (a.dep !== b.dep) changes.push(`Retime STD ${toHHMM(a.dep)} → ${toHHMM(b.dep)}`);
+        if (a.block !== b.block) changes.push(`Block ${a.block}m → ${b.block}m`);
+        if (a.tail !== b.tail) changes.push(`Reassign ${a.tail} → ${b.tail}`);
+        if (a.type !== b.type) changes.push(`Type ${a.type} → ${b.type}`);
+        if (a.cargoOp !== b.cargoOp) changes.push(`Cargo ${a.cargoOp} → ${b.cargoOp}`);
+        if (changes.length > 0) status = "changed";
       }
-      return { key: k, base: a, cur: b, status };
-    }).sort((a, b) => {
+      return { key: k, a, b, status, changes };
+    }).sort((x, y) => {
       const o = { removed: 0, changed: 1, added: 2, unchanged: 3 };
-      return (o[a.status] - o[b.status]) || (a.base || a.cur).route.localeCompare((b.base || b.cur).route);
+      if (o[x.status] !== o[y.status]) return o[x.status] - o[y.status];
+      const ra = (x.a || x.b).route, rb = (y.a || y.b).route;
+      if (ra !== rb) return ra.localeCompare(rb);
+      return ((x.a || x.b).day || 1) - ((y.a || y.b).day || 1);
     });
     counts = {
       added: rows.filter(r => r.status === "added").length,
@@ -12644,174 +12675,85 @@ function CompareTab() {
     };
   }
 
-  const statusStyle = {
-    added:     { bg: C.successLight, border: C.success, badge: { bg: C.success, color: "#fff", label: "ADDED" } },
-    removed:   { bg: C.dangerLight, border: C.danger, badge: { bg: C.danger, color: "#fff", label: "REMOVED" } },
-    changed:   { bg: C.amberLight, border: C.amber, badge: { bg: C.amber, color: "#fff", label: "CHANGED" } },
-    unchanged: { bg: C.white, border: "transparent", badge: { bg: C.offWhite2, color: C.textMuted, label: "SAME" } },
-  };
-  const thS = { padding: "10px 12px", fontSize: 11, fontWeight: 700, color: C.textSoft, textTransform: "uppercase", letterSpacing: 0.4, borderBottom: `2px solid ${C.brownLight}`, background: C.offWhite };
-  const tdS = { padding: "9px 12px", fontSize: 12, borderBottom: `1px solid ${C.offWhite2}`, verticalAlign: "top" };
+  const filteredRows = rows.filter(r => {
+    if (!showUnchanged && r.status === "unchanged") return false;
+    if (filter !== "all" && r.status !== filter) return false;
+    return true;
+  });
 
-  function dowStr(days) { return !days?.length ? "—" : ALL_DAYS.map(d => days.includes(d) ? String(d) : ".").join(""); }
-  function cell(p, bg) {
-    if (!p) return <td style={{ ...tdS, color: C.textMuted, background: C.offWhite }}>—</td>;
-    return (<td style={{ ...tdS, background: bg }}>
-      <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: 1, color: C.brownDark }}>{dowStr(p.days)}</span>
-      <span style={{ fontFamily: MONO, fontWeight: 700, fontSize: 12, marginLeft: 10 }}>{toHHMM(p.dep)}</span>
-      <span style={{ fontSize: 11, color: C.textMuted, marginLeft: 6 }}>{p.block}m</span>
-      <div style={{ fontSize: 10, color: C.textMuted, marginTop: 1 }}>{p.tail}</div>
-    </td>);
+  // ── Export to Excel ───────────────────────────────────────────────
+  function exportChanges() {
+    const nameA = dataA?.name || dataA?.title || dataA?.scenarioName || "Version A";
+    const nameB = dataB?.name || dataB?.title || dataB?.scenarioName || "Version B";
+    const exportRows = filteredRows.map(r => {
+      const f = r.b || r.a;
+      return {
+        "Change": r.status.toUpperCase(),
+        "Flight No": f.flightNum,
+        "Route": f.route,
+        "Day": dayNames[(f.day - 1) % 7],
+        "DOW": f.day,
+        "Tail (A)": r.a?.tail || "—",
+        "STD (A)": r.a ? toHHMM(r.a.dep) : "—",
+        "Block (A)": r.a ? `${r.a.block}m` : "—",
+        "Tail (B)": r.b?.tail || "—",
+        "STD (B)": r.b ? toHHMM(r.b.dep) : "—",
+        "Block (B)": r.b ? `${r.b.block}m` : "—",
+        "Type": f.type,
+        "Cargo": f.cargoOp,
+        "Change Description": r.changes.join("; ") || "No change",
+      };
+    });
+    const ws = XLSX.utils.json_to_sheet(exportRows);
+    // Set column widths
+    ws["!cols"] = [
+      { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 6 }, { wch: 5 },
+      { wch: 12 }, { wch: 8 }, { wch: 8 }, { wch: 12 }, { wch: 8 }, { wch: 8 },
+      { wch: 6 }, { wch: 10 }, { wch: 40 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Schedule Changes");
+    // Summary sheet
+    const summaryData = [
+      { "Item": "Compared From", "Value": nameA },
+      { "Item": "Compared To", "Value": nameB },
+      { "Item": "Date Generated", "Value": new Date().toLocaleString("en-GB") },
+      { "Item": "Flights Added", "Value": counts.added },
+      { "Item": "Flights Removed", "Value": counts.removed },
+      { "Item": "Flights Changed", "Value": counts.changed },
+      { "Item": "Flights Unchanged", "Value": counts.unchanged },
+    ];
+    const ws2 = XLSX.utils.json_to_sheet(summaryData);
+    ws2["!cols"] = [{ wch: 20 }, { wch: 40 }];
+    XLSX.utils.book_append_sheet(wb, ws2, "Summary");
+    XLSX.writeFile(wb, `schedule_changes_${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
+
+  const statusStyle = {
+    added:     { bg: C.successLight, border: C.success, badge: { bg: C.success, color: "#fff", label: "ADD" } },
+    removed:   { bg: C.dangerLight, border: C.danger, badge: { bg: C.danger, color: "#fff", label: "REM" } },
+    changed:   { bg: C.amberLight, border: C.amber, badge: { bg: C.amber, color: "#fff", label: "CHG" } },
+    unchanged: { bg: C.white, border: "transparent", badge: { bg: C.offWhite2, color: C.textMuted, label: "—" } },
+  };
+  const thS = { padding: "8px 10px", fontSize: 10, fontWeight: 700, color: C.textSoft, textTransform: "uppercase", letterSpacing: 0.3, borderBottom: `2px solid ${C.brownLight}`, background: C.offWhite, textAlign: "left" };
+  const tdS = { padding: "7px 10px", fontSize: 11, borderBottom: `1px solid ${C.offWhite2}`, verticalAlign: "middle" };
 
   const selectStyle = { padding: "6px 10px", fontSize: 12, fontFamily: FONT, border: `1.5px solid ${C.brownLight}`, borderRadius: 6, color: C.text, background: C.white, outline: "none", flex: 1, minWidth: 180 };
 
   return (
-    <div style={{ padding: 24, maxWidth: 1200, margin: "0 auto", fontFamily: FONT }}>
+    <div style={{ padding: 24, maxWidth: 1400, margin: "0 auto", fontFamily: FONT }}>
 
-      <div style={{
-        marginBottom: 16, padding: "10px 16px", borderRadius: 8,
-        background: C.dangerLight, color: C.danger,
-        border: "1px solid #FECACA", fontSize: 12, fontWeight: 600,
-        display: "flex", alignItems: "center", gap: 8,
-      }}>
-        <span style={{ fontSize: 16 }}>⚠︎</span>
-        Work in progress — this tab is under development and should not be used for operational purposes.
-      </div>
-
-      {/* ── Repository browser ──────────────────────────────────── */}
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.brownDark }}>Version Repository</div>
-          <button onClick={() => setRepoOpen(v => !v)} style={{
-            background: "transparent", color: C.textSoft, border: `1px solid ${C.brownLight}`,
-            padding: "3px 10px", borderRadius: 5, cursor: "pointer", fontSize: 10, fontFamily: FONT, fontWeight: 500,
-          }}>{repoOpen ? "Collapse" : "Expand"}</button>
-        </div>
-
-        {repoOpen && !hasAnyData && (
-          <div style={{ padding: 32, textAlign: "center", color: C.textMuted, background: C.bg, borderRadius: 10, border: `1px dashed ${C.brownLight}` }}>
-            <div style={{ fontSize: 22, marginBottom: 8, opacity: 0.3, fontWeight: 700 }}>—</div>
-            <div style={{ fontSize: 13, color: C.textSoft }}>
-              No baselines or versions saved yet. Use <strong>Set Baseline</strong> to publish a monthly schedule, then <strong>Save Version</strong> to track changes.
-            </div>
-          </div>
-        )}
-
-        {repoOpen && hasAnyData && (
-          <div style={{ border: `1px solid ${C.brownLight}`, borderRadius: 10, overflow: "hidden" }}>
-            {monthGroups.map(mg => {
-              const expanded = expandedMonths[mg.month] !== false;
-              return (
-                <div key={mg.month}>
-                  {/* Month header */}
-                  <div
-                    onClick={() => setExpandedMonths(prev => ({ ...prev, [mg.month]: !expanded }))}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 10,
-                      padding: "10px 14px", cursor: "pointer",
-                      background: C.offWhite2, borderBottom: `1px solid ${C.brownLight}`,
-                    }}
-                  >
-                    <span style={{ fontSize: 10, color: C.textMuted, fontFamily: MONO }}>{expanded ? "▼" : "▶"}</span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: C.brownDark }}>{mg.label}</span>
-                    <span style={{ fontSize: 10, color: C.textMuted }}>
-                      {mg.baseline ? "✓ Baseline" : "No baseline"} · {mg.versions.length} version{mg.versions.length !== 1 ? "s" : ""}
-                    </span>
-                  </div>
-
-                  {expanded && (
-                    <div style={{ padding: "0" }}>
-                      {/* Baseline row */}
-                      {mg.baseline && (
-                        <div style={{
-                          display: "flex", alignItems: "center", gap: 12, padding: "8px 14px 8px 28px",
-                          borderBottom: `1px solid ${C.offWhite2}`, background: C.yellowLight,
-                        }}>
-                          <span style={{
-                            fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 3,
-                            background: C.yellowHeavy, color: "#fff", letterSpacing: 0.5,
-                          }}>BASELINE</span>
-                          <span style={{ fontSize: 12, fontWeight: 600, color: C.brownDark, flex: 1 }}>{mg.baseline.name}</span>
-                          <span style={{ fontSize: 10, color: C.textMuted }}>{fmtDate(mg.baseline.savedAt)}</span>
-                          <span style={{ fontSize: 10, color: C.textMuted, fontFamily: MONO }}>
-                            {mg.baseline.flights?.length || "?"} flt · {mg.baseline.aircraft?.length || "?"} ac
-                          </span>
-                          <button onClick={() => { setPickA(mg.baseline.key); setPickB(CURRENT_KEY); }} style={{
-                            background: C.bg, color: C.textSoft, border: `1px solid ${C.brownLight}`,
-                            padding: "2px 8px", borderRadius: 4, cursor: "pointer", fontSize: 9, fontWeight: 500,
-                          }}>Compare</button>
-                          <button onClick={async () => { if (window.confirm("Delete this baseline?")) await deleteEntry(mg.baseline.key); }} style={{
-                            background: C.dangerLight, color: C.danger, border: "none",
-                            padding: "2px 8px", borderRadius: 4, cursor: "pointer", fontSize: 9, fontWeight: 600,
-                          }}>×</button>
-                        </div>
-                      )}
-
-                      {/* Version rows */}
-                      {mg.versions.map(v => (
-                        <div key={v.key} style={{
-                          padding: "10px 14px 10px 28px",
-                          borderBottom: `1px solid ${C.offWhite2}`,
-                        }}>
-                          {/* Row 1: title, date, actions */}
-                          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: v.rationale || v.summary ? 4 : 0 }}>
-                            <span style={{
-                              fontSize: 9, fontWeight: 600, padding: "2px 8px", borderRadius: 3,
-                              background: C.offWhite2, color: C.textMuted, letterSpacing: 0.3, flexShrink: 0,
-                            }}>VER</span>
-                            <span style={{ fontSize: 12, fontWeight: 600, color: C.brownDark, flex: 1 }}>{v.title || "Untitled"}</span>
-                            <span style={{ fontSize: 10, color: C.textMuted, fontFamily: MONO, flexShrink: 0 }}>
-                              {v.flights?.length || "?"} flt
-                            </span>
-                            <span style={{ fontSize: 10, color: C.textMuted, flexShrink: 0 }}>{fmtDate(v.savedAt)}</span>
-                            <button onClick={() => { setPickA(mg.baseline ? mg.baseline.key : CURRENT_KEY); setPickB(v.key); }} style={{
-                              background: C.bg, color: C.textSoft, border: `1px solid ${C.brownLight}`,
-                              padding: "2px 8px", borderRadius: 4, cursor: "pointer", fontSize: 9, fontWeight: 500, flexShrink: 0,
-                            }}>Compare</button>
-                            <button onClick={async () => { if (window.confirm("Delete this version?")) await deleteEntry(v.key); }} style={{
-                              background: C.dangerLight, color: C.danger, border: "none",
-                              padding: "2px 8px", borderRadius: 4, cursor: "pointer", fontSize: 9, fontWeight: 600, flexShrink: 0,
-                            }}>×</button>
-                          </div>
-                          {/* Rationale */}
-                          {v.rationale && (
-                            <div style={{ fontSize: 11, color: C.textSoft, fontStyle: "italic", marginBottom: 2 }}>
-                              Why: {v.rationale}
-                            </div>
-                          )}
-                          {/* Change summary (truncated) */}
-                          {v.summary && (
-                            <div style={{ fontSize: 10, color: C.textMuted, whiteSpace: "pre-line", lineHeight: 1.4, maxHeight: 36, overflow: "hidden" }}>
-                              {v.summary}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-
-                      {mg.versions.length === 0 && !mg.baseline && (
-                        <div style={{ padding: "12px 28px", fontSize: 11, color: C.textMuted, fontStyle: "italic" }}>No versions yet</div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* ── Dual version pickers ─────────────────────────────────── */}
-      <div style={{ display: "flex", gap: 16, marginBottom: 20, flexWrap: "wrap", alignItems: "flex-end" }}>
+      {/* ── Dual pickers ─────────────────────────────────────────── */}
+      <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div style={{ flex: 1, minWidth: 200 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Version A</div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>From (Baseline)</div>
           <select value={pickA} onChange={e => setPickA(e.target.value)} style={selectStyle}>
             {options.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
           </select>
         </div>
-        <div style={{ fontSize: 22, color: C.brownLight, paddingBottom: 4 }}>⇄</div>
+        <div style={{ fontSize: 18, color: C.brownLight, paddingBottom: 6 }}>→</div>
         <div style={{ flex: 1, minWidth: 200 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Version B</div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>To (Proposed)</div>
           <select value={pickB} onChange={e => setPickB(e.target.value)} style={selectStyle}>
             {options.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
           </select>
@@ -12819,67 +12761,88 @@ function CompareTab() {
       </div>
 
       {pickA === pickB && (
-        <div style={{ padding: 40, textAlign: "center", color: C.textMuted }}>Select two different versions to compare.</div>
+        <div style={{ padding: 40, textAlign: "center", color: C.textMuted }}>Select two different schedules to compare.</div>
       )}
       {loadingData && pickA !== pickB && (
         <div style={{ padding: 40, textAlign: "center", color: C.textMuted }}>Loading…</div>
       )}
 
-      {/* ── Summary cards + diff table ────────────────────────── */}
+      {/* ── Results ──────────────────────────────────────────────── */}
       {canCompare && (
         <>
-          <div style={{ display: "flex", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
-            <div style={{ flex: 1, minWidth: 200, background: C.brownPale, borderRadius: 10, padding: "14px 20px", border: `1px solid ${C.brownLight}` }}>
-              <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Version A</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: C.brownDark }}>{dataA.name || dataA.title || dataA.scenarioName || "Schedule"}</div>
-              <div style={{ fontSize: 11, color: C.textSoft, marginTop: 2 }}>{dataA.flights?.length || 0} flights · {dataA.aircraft?.length || 0} aircraft</div>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", fontSize: 22, color: C.brownLight }}>⇄</div>
-            <div style={{ flex: 1, minWidth: 200, background: AOC_DEFS.ATLAS.bg, borderRadius: 10, padding: "14px 20px", border: "1px solid #BFDBFE" }}>
-              <div style={{ fontSize: 11, color: C.yellowHeavy, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Version B</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: C.brownDark }}>{dataB.name || dataB.title || dataB.scenarioName || "Schedule"}</div>
-              <div style={{ fontSize: 11, color: C.textSoft, marginTop: 2 }}>{dataB.flights?.length || 0} flights · {dataB.aircraft?.length || 0} aircraft</div>
-            </div>
-            {[["added",C.success,"+ Added"],["removed",C.danger,"− Removed"],["changed",C.amber,"~ Changed"],["unchanged",C.textMuted,"= Same"]].map(([k,col,lbl]) => (
-              <div key={k} style={{ background: C.white, border: `1px solid ${C.brownLight}`, borderRadius: 10, padding: "14px 20px", textAlign: "center", minWidth: 90 }}>
-                <div style={{ fontSize: 24, fontWeight: 700, color: col }}>{counts[k]}</div>
-                <div style={{ fontSize: 10, color: col, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4 }}>{lbl}</div>
-              </div>
+          {/* Summary strip */}
+          <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
+            {[["added",C.success,"Added"],["removed",C.danger,"Removed"],["changed",C.amber,"Changed"],["unchanged",C.textMuted,"Same"]].map(([k,col,lbl]) => (
+              <button key={k}
+                onClick={() => setFilter(filter === k ? "all" : k)}
+                style={{
+                  background: filter === k ? col : C.white, color: filter === k ? "#fff" : col,
+                  border: `1.5px solid ${col}`, borderRadius: 6, padding: "6px 14px",
+                  cursor: "pointer", fontFamily: FONT, fontSize: 11, fontWeight: 700,
+                  display: "flex", alignItems: "center", gap: 6,
+                }}>
+                <span style={{ fontSize: 16, fontWeight: 700 }}>{counts[k]}</span> {lbl}
+              </button>
             ))}
+            <div style={{ flex: 1 }} />
+            <label style={{ fontSize: 10, color: C.textMuted, display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+              <input type="checkbox" checked={showUnchanged} onChange={e => setShowUnchanged(e.target.checked)} /> Show unchanged
+            </label>
+            <PrimaryBtn onClick={exportChanges} style={{ fontSize: 11, padding: "6px 16px" }}>
+              Export Changes (.xlsx)
+            </PrimaryBtn>
           </div>
 
-          <div style={{ border: `1px solid ${C.brownLight}`, borderRadius: 10, overflow: "hidden" }}>
+          {/* Change list table */}
+          <div style={{ border: `1px solid ${C.brownLight}`, borderRadius: 8, overflow: "hidden" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr>
-                <th style={thS}>Status</th><th style={thS}>Route</th><th style={thS}>Type</th>
-                <th style={{ ...thS, background: C.offWhite2 }}>Version A — DOW / STD / Block</th>
-                <th style={{ ...thS, background: AOC_DEFS.ATLAS.bg }}>Version B — DOW / STD / Block</th>
-                <th style={thS}>Delta</th>
+                <th style={{ ...thS, width: 50 }}></th>
+                <th style={thS}>Flight</th>
+                <th style={thS}>Route</th>
+                <th style={{ ...thS, width: 50 }}>Day</th>
+                <th style={thS}>Tail (From)</th>
+                <th style={thS}>STD (From)</th>
+                <th style={thS}>Tail (To)</th>
+                <th style={thS}>STD (To)</th>
+                <th style={thS}>Block</th>
+                <th style={{ ...thS, minWidth: 200 }}>Change Description</th>
               </tr></thead>
               <tbody>
-                {rows.map(row => {
-                  const ss = statusStyle[row.status], b = row.base, c = row.cur;
-                  const depDelta = b && c ? c.dep - b.dep : null;
-                  const blockDelta = b && c ? c.block - b.block : null;
+                {filteredRows.length === 0 && (
+                  <tr><td colSpan={10} style={{ ...tdS, textAlign: "center", color: C.textMuted, padding: 30 }}>
+                    {filter !== "all" ? "No flights match this filter." : "No changes detected."}
+                  </td></tr>
+                )}
+                {filteredRows.map(r => {
+                  const ss = statusStyle[r.status];
+                  const f = r.b || r.a;
+                  const fmtBT = (m) => { const h = Math.floor(m/60), mn = m%60; return h > 0 ? `${h}h${mn > 0 ? ` ${mn}m` : ""}` : `${mn}m`; };
                   return (
-                    <tr key={row.key} style={{ background: ss.bg, borderLeft: `3px solid ${ss.border}` }}>
-                      <td style={tdS}><span style={{ background: ss.badge.bg, color: ss.badge.color, fontSize: 9, fontWeight: 700, padding: "2px 7px", borderRadius: 4, letterSpacing: 0.5 }}>{ss.badge.label}</span></td>
-                      <td style={{ ...tdS, fontFamily: MONO, fontWeight: 700, color: C.brownDark }}>{(b || c).route}</td>
-                      <td style={tdS}><Badge color={flightStyle((b||c).type).txt} bg={flightStyle((b||c).type).bg}>{flightStyle((b||c).type).label}</Badge></td>
-                      {cell(b, C.offWhite2)}
-                      {cell(c, AOC_DEFS.ATLAS.bg)}
-                      <td style={{ ...tdS, fontFamily: MONO, fontSize: 11 }}>
-                        {depDelta != null && depDelta !== 0 && <div style={{ color: depDelta > 0 ? C.danger : C.success, fontWeight: 700 }}>{depDelta > 0 ? "+" : ""}{depDelta}m dep</div>}
-                        {blockDelta != null && blockDelta !== 0 && <div style={{ color: blockDelta > 0 ? C.danger : C.success, fontWeight: 700 }}>{blockDelta > 0 ? "+" : ""}{blockDelta}m blk</div>}
-                        {row.status === "unchanged" && <span style={{ color: C.textMuted }}>—</span>}
-                        {row.status === "added" && <span style={{ color: C.success, fontWeight: 700 }}>New</span>}
-                        {row.status === "removed" && <span style={{ color: C.danger, fontWeight: 700 }}>Dropped</span>}
+                    <tr key={r.key} style={{ background: ss.bg, borderLeft: `3px solid ${ss.border}` }}>
+                      <td style={tdS}>
+                        <span style={{ background: ss.badge.bg, color: ss.badge.color, fontSize: 8, fontWeight: 700, padding: "2px 6px", borderRadius: 3, letterSpacing: 0.4 }}>{ss.badge.label}</span>
+                      </td>
+                      <td style={{ ...tdS, fontFamily: MONO, fontWeight: 700, fontSize: 11 }}>{f.flightNum || "—"}</td>
+                      <td style={{ ...tdS, fontFamily: MONO, fontWeight: 600, color: C.brownDark }}>{f.route}</td>
+                      <td style={{ ...tdS, fontFamily: MONO, fontSize: 10, textAlign: "center" }}>{dayNames[(f.day - 1) % 7]}</td>
+                      <td style={{ ...tdS, fontFamily: MONO, fontSize: 10 }}>{r.a?.tail || "—"}</td>
+                      <td style={{ ...tdS, fontFamily: MONO, fontSize: 11 }}>{r.a ? toHHMM(r.a.dep) : "—"}</td>
+                      <td style={{ ...tdS, fontFamily: MONO, fontSize: 10, fontWeight: r.a && r.b && r.a.tail !== r.b.tail ? 700 : 400, color: r.a && r.b && r.a.tail !== r.b.tail ? C.yellowHeavy : C.text }}>{r.b?.tail || "—"}</td>
+                      <td style={{ ...tdS, fontFamily: MONO, fontSize: 11, fontWeight: r.a && r.b && r.a.dep !== r.b.dep ? 700 : 400, color: r.a && r.b && r.a.dep !== r.b.dep ? C.yellowHeavy : C.text }}>{r.b ? toHHMM(r.b.dep) : "—"}</td>
+                      <td style={{ ...tdS, fontFamily: MONO, fontSize: 10 }}>{fmtBT(f.block)}</td>
+                      <td style={{ ...tdS, fontSize: 10, color: C.textSoft, lineHeight: 1.4 }}>
+                        {r.changes.length > 0 ? r.changes.join("; ") : <span style={{ color: C.textMuted }}>No change</span>}
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
+          </div>
+
+          <div style={{ marginTop: 10, fontSize: 10, color: C.textMuted, textAlign: "right" }}>
+            Showing {filteredRows.length} of {rows.length} flights
           </div>
         </>
       )}
