@@ -6749,10 +6749,11 @@ function GanttTab() {
     if (e.altKey && svgRef.current) {
       e.preventDefault();
       const svg = svgRef.current;
-      const rect = svg.getBoundingClientRect();
-      const scrollEl = scrollRef.current;
-      const svgX = e.clientX - rect.left + (scrollEl?.scrollLeft || 0);
-      const svgY = e.clientY - rect.top + (scrollEl?.scrollTop || 0);
+      const pt = svg.createSVGPoint();
+      pt.x = e.clientX; pt.y = e.clientY;
+      const svgPt = pt.matrixTransform(svg.getScreenCTM().inverse());
+      const svgX = svgPt.x;
+      const svgY = svgPt.y;
       lassoRef.current = { startX: svgX, startY: svgY, rect: { x: svgX, y: svgY, w: 0, h: 0 } };
       setLassoRect({ x: svgX, y: svgY, w: 0, h: 0 });
       return;
@@ -6770,10 +6771,11 @@ function GanttTab() {
     if (lassoRef.current) {
       const svg = svgRef.current;
       if (!svg) return;
-      const rect = svg.getBoundingClientRect();
-      const scrollEl = scrollRef.current;
-      const svgX = e.clientX - rect.left + (scrollEl?.scrollLeft || 0);
-      const svgY = e.clientY - rect.top + (scrollEl?.scrollTop || 0);
+      const pt = svg.createSVGPoint();
+      pt.x = e.clientX; pt.y = e.clientY;
+      const svgPt = pt.matrixTransform(svg.getScreenCTM().inverse());
+      const svgX = svgPt.x;
+      const svgY = svgPt.y;
       const lx = Math.min(lassoRef.current.startX, svgX);
       const ly = Math.min(lassoRef.current.startY, svgY);
       const lw = Math.abs(svgX - lassoRef.current.startX);
