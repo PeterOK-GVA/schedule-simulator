@@ -6737,9 +6737,27 @@ function GanttTab() {
 
   // Click-and-drag panning on empty Gantt space
   const pannedRef = useRef(false);
+  // ── Lasso / marquee select (Alt+drag on background) ────────────────
+  const lassoRef = useRef(null);
+  const [lassoRect, setLassoRect] = useState(null); // { x, y, w, h } in SVG coords
+
   function onPanStart(e) {
     if (e.button !== 0) return;
-    if (dragActiveRef.current) return; // Flight or MX drag in progress — don't pan
+    if (dragActiveRef.current) return;
+
+    // Alt+drag = lasso selection
+    if (e.altKey && svgRef.current) {
+      e.preventDefault();
+      const svg = svgRef.current;
+      const rect = svg.getBoundingClientRect();
+      const scrollEl = scrollRef.current;
+      const svgX = e.clientX - rect.left + (scrollEl?.scrollLeft || 0);
+      const svgY = e.clientY - rect.top + (scrollEl?.scrollTop || 0);
+      lassoRef.current = { startX: svgX, startY: svgY, clientX: e.clientX, clientY: e.clientY };
+      setLassoRect({ x: svgX, y: svgY, w: 0, h: 0 });
+      return;
+    }
+
     const el = scrollRef.current;
     if (!el) return;
     pannedRef.current = false;
@@ -6748,6 +6766,22 @@ function GanttTab() {
     el.style.userSelect = "none";
   }
   function onPanMove(e) {
+    // Lasso drag
+    if (lassoRef.current) {
+      const svg = svgRef.current;
+      if (!svg) return;
+      const rect = svg.getBoundingClientRect();
+      const scrollEl = scrollRef.current;
+      const svgX = e.clientX - rect.left + (scrollEl?.scrollLeft || 0);
+      const svgY = e.clientY - rect.top + (scrollEl?.scrollTop || 0);
+      const lx = Math.min(lassoRef.current.startX, svgX);
+      const ly = Math.min(lassoRef.current.startY, svgY);
+      const lw = Math.abs(svgX - lassoRef.current.startX);
+      const lh = Math.abs(svgY - lassoRef.current.startY);
+      setLassoRect({ x: lx, y: ly, w: lw, h: lh });
+      return;
+    }
+
     if (!panRef.current) return;
     const el = scrollRef.current;
     if (!el) return;
@@ -6758,6 +6792,33 @@ function GanttTab() {
     el.scrollTop = panRef.current.scrollTop - dy;
   }
   function onPanEnd() {
+    // Finish lasso — select flights within rectangle
+    if (lassoRef.current && lassoRect && lassoRect.w > 5 && lassoRect.h > 5) {
+      const lx1 = lassoRect.x, ly1 = lassoRect.y;
+      const lx2 = lx1 + lassoRect.w, ly2 = ly1 + lassoRect.h;
+      const newSel = new Set();
+      flights.forEach(f => {
+        const wm = weekMins(f.day, f.dep);
+        const fx = localWMinsToX(wm);
+        const fw = (f.block / 60) * hourW;
+        // Find flight's row Y
+        const acIdx = rowLayout.visibleAc.findIndex(a => a.id === f.acId);
+        if (acIdx < 0) return;
+        const fy = rowLayout.ys[acIdx]?.y ?? 0;
+        const fh = rowLayout.ys[acIdx]?.h ?? ROW_HEIGHT;
+        // Check overlap with lasso rectangle
+        if (fx + fw > lx1 && fx < lx2 && fy + fh > ly1 && fy < ly2) {
+          newSel.add(f.id);
+        }
+      });
+      if (newSel.size > 0) setSelected(newSel);
+      lassoRef.current = null;
+      setLassoRect(null);
+      return;
+    }
+    lassoRef.current = null;
+    setLassoRect(null);
+
     if (panRef.current) {
       panRef.current = null;
       const el = scrollRef.current;
@@ -7981,8 +8042,22 @@ function GanttTab() {
             <rect x={0} y={svgH - 24} width={svgW} height={24} fill={C.offWhite2} />
             <text x={LABEL_WIDTH + 8} y={svgH - 9} fill={C.textSoft}
               fontSize={10} fontFamily={FONT} fontWeight="500" opacity="0.8">
-              {aircraft.length} aircraft · {flights.length} flight instances · Double-click blank area to add flight · Hold Shift while dragging to lock time
+              {aircraft.length} aircraft · {flights.length} flight instances · Double-click blank area to add flight · Shift+drag = lock time · Alt+drag = select area
             </text>
+
+            {/* Lasso selection rectangle */}
+            {lassoRect && lassoRect.w > 2 && lassoRect.h > 2 && (
+              <rect
+                x={lassoRect.x} y={lassoRect.y}
+                width={lassoRect.w} height={lassoRect.h}
+                fill="rgba(27,54,93,0.08)"
+                stroke="#1B365D"
+                strokeWidth="1.5"
+                strokeDasharray="6 3"
+                rx={3}
+                style={{ pointerEvents: "none" }}
+              />
+            )}
           </svg>
         </div>
       </div>
