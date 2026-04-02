@@ -8559,43 +8559,44 @@ function GanttTab() {
         return (
           <div style={{
             position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 5500,
-            background: C.brownDark, color: C.white, padding: "10px 24px",
+            background: C.headerBg, color: C.text, padding: "10px 24px",
             display: "flex", alignItems: "center", gap: 12,
-            boxShadow: "0 -4px 24px rgba(0,0,0,0.3)",
+            boxShadow: `0 -4px 24px rgba(0,0,0,${C === C_DARK ? "0.5" : "0.15"})`,
+            borderTop: `1px solid ${C.headerBdr}`,
             fontFamily: FONT, fontSize: 12,
           }}>
-            <span style={{ fontWeight: 700, fontSize: 13 }}>
+            <span style={{ fontWeight: 700, fontSize: 13, color: C.brownDark }}>
               {selected.size} flights selected
             </span>
-            <span style={{ fontSize: 10, color: C.brownLight, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <span style={{ fontSize: 10, color: C.textMuted, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {selRoutes.length <= 3 ? selRoutes.join(", ") : `${selRoutes.slice(0, 3).join(", ")}…`}
             </span>
 
-            <div style={{ width: 1, height: 24, background: C.brownHeavy }} />
+            <div style={{ width: 1, height: 24, background: C.brownLight }} />
 
             {/* Retime */}
-            <span style={{ fontSize: 10, fontWeight: 600, color: C.brownLight }}>Retime:</span>
+            <span style={{ fontSize: 10, fontWeight: 600, color: C.textMuted }}>Retime:</span>
             {[-60, -30, -15, -10, -5, +5, +10, +15, +30, +60].map(m => (
               <button key={m} onClick={() => {
                 dispatch({ type: A.BULK_RETIME, ids: selected, shiftMins: m });
               }} style={{
-                background: "rgba(255,255,255,0.1)", color: C.white, border: "1px solid rgba(255,255,255,0.2)",
+                background: C.offWhite2, color: C.text, border: `1px solid ${C.brownLight}`,
                 padding: "4px 8px", borderRadius: 4, cursor: "pointer",
                 fontSize: 10, fontFamily: MONO, fontWeight: 600,
               }}>{m > 0 ? `+${m}` : m}m</button>
             ))}
 
-            <div style={{ width: 1, height: 24, background: C.brownHeavy }} />
+            <div style={{ width: 1, height: 24, background: C.brownLight }} />
 
             {/* Reassign */}
-            <span style={{ fontSize: 10, fontWeight: 600, color: C.brownLight }}>Move to:</span>
+            <span style={{ fontSize: 10, fontWeight: 600, color: C.textMuted }}>Move to:</span>
             <select onChange={e => {
               if (!e.target.value) return;
               dispatch({ type: A.BULK_REASSIGN, ids: selected, toAcId: e.target.value });
               e.target.value = "";
             }} style={{
-              background: "rgba(255,255,255,0.1)", color: C.white,
-              border: "1px solid rgba(255,255,255,0.2)",
+              background: C.offWhite2, color: C.text,
+              border: `1px solid ${C.brownLight}`,
               padding: "4px 8px", borderRadius: 4, fontSize: 10, fontFamily: MONO,
             }}>
               <option value="">Aircraft…</option>
@@ -8606,7 +8607,7 @@ function GanttTab() {
             <button onClick={() => {
               dispatch({ type: A.BULK_REASSIGN, ids: selected, toAcId: POOL_AC_ID });
             }} style={{
-              background: "rgba(255,255,255,0.1)", color: "#9CA3AF", border: "1px solid rgba(255,255,255,0.2)",
+              background: C.offWhite2, color: C.textSoft, border: `1px solid ${C.brownLight}`,
               padding: "4px 10px", borderRadius: 4, cursor: "pointer",
               fontSize: 10, fontWeight: 600, fontFamily: FONT,
             }}>Park</button>
@@ -8620,14 +8621,14 @@ function GanttTab() {
                 clearSelection();
               }
             }} style={{
-              background: C.danger, color: C.white, border: "none",
+              background: C.danger, color: "#fff", border: "none",
               padding: "6px 14px", borderRadius: 5, cursor: "pointer",
               fontSize: 11, fontWeight: 700, fontFamily: FONT,
             }}>Delete {selected.size}</button>
 
             {/* Clear selection */}
             <button onClick={clearSelection} style={{
-              background: "transparent", color: C.brownLight, border: "1px solid rgba(255,255,255,0.2)",
+              background: "transparent", color: C.textSoft, border: `1px solid ${C.brownLight}`,
               padding: "6px 12px", borderRadius: 5, cursor: "pointer",
               fontSize: 11, fontWeight: 600, fontFamily: FONT,
             }}>✕ Clear</button>
