@@ -6745,17 +6745,56 @@ function GanttTab() {
     if (e.button !== 0) return;
     if (dragActiveRef.current) return;
 
-    // Alt+drag = lasso selection
+    // Alt+drag = lasso selection (uses window listeners for reliable capture)
     if (e.altKey && svgRef.current) {
       e.preventDefault();
+      e.stopPropagation();
       const svg = svgRef.current;
       const pt = svg.createSVGPoint();
       pt.x = e.clientX; pt.y = e.clientY;
       const svgPt = pt.matrixTransform(svg.getScreenCTM().inverse());
-      const svgX = svgPt.x;
-      const svgY = svgPt.y;
-      lassoRef.current = { startX: svgX, startY: svgY, rect: { x: svgX, y: svgY, w: 0, h: 0 } };
-      setLassoRect({ x: svgX, y: svgY, w: 0, h: 0 });
+      lassoRef.current = { startX: svgPt.x, startY: svgPt.y, rect: { x: svgPt.x, y: svgPt.y, w: 0, h: 0 } };
+      setLassoRect({ x: svgPt.x, y: svgPt.y, w: 0, h: 0 });
+
+      function onLassoMove(ev) {
+        const p = svg.createSVGPoint();
+        p.x = ev.clientX; p.y = ev.clientY;
+        const sp = p.matrixTransform(svg.getScreenCTM().inverse());
+        const lx = Math.min(lassoRef.current.startX, sp.x);
+        const ly = Math.min(lassoRef.current.startY, sp.y);
+        const lw = Math.abs(sp.x - lassoRef.current.startX);
+        const lh = Math.abs(sp.y - lassoRef.current.startY);
+        const r = { x: lx, y: ly, w: lw, h: lh };
+        lassoRef.current.rect = r;
+        setLassoRect(r);
+      }
+      function onLassoUp() {
+        window.removeEventListener("mousemove", onLassoMove);
+        window.removeEventListener("mouseup", onLassoUp);
+        const lr = lassoRef.current?.rect;
+        if (lr && lr.w > 5 && lr.h > 5) {
+          const lx1 = lr.x, ly1 = lr.y, lx2 = lr.x + lr.w, ly2 = lr.y + lr.h;
+          const newSel = new Set();
+          flights.forEach(f => {
+            const wm = weekMins(f.day, f.dep);
+            const fx = localWMinsToX(wm);
+            const fw = (f.block / 60) * hourW;
+            const acIdx = rowLayout.visibleAc.findIndex(a => a.id === f.acId);
+            if (acIdx < 0) return;
+            const fy = rowLayout.ys[acIdx]?.y ?? 0;
+            const fh = rowLayout.ys[acIdx]?.h ?? ROW_HEIGHT;
+            if (fx + fw > lx1 && fx < lx2 && fy + fh > ly1 && fy < ly2) newSel.add(f.id);
+          });
+          if (newSel.size > 0) {
+            setSelected(newSel);
+            pannedRef.current = true; // prevent click from clearing selection
+          }
+        }
+        lassoRef.current = null;
+        setLassoRect(null);
+      }
+      window.addEventListener("mousemove", onLassoMove);
+      window.addEventListener("mouseup", onLassoUp);
       return;
     }
 
@@ -6767,25 +6806,6 @@ function GanttTab() {
     el.style.userSelect = "none";
   }
   function onPanMove(e) {
-    // Lasso drag
-    if (lassoRef.current) {
-      const svg = svgRef.current;
-      if (!svg) return;
-      const pt = svg.createSVGPoint();
-      pt.x = e.clientX; pt.y = e.clientY;
-      const svgPt = pt.matrixTransform(svg.getScreenCTM().inverse());
-      const svgX = svgPt.x;
-      const svgY = svgPt.y;
-      const lx = Math.min(lassoRef.current.startX, svgX);
-      const ly = Math.min(lassoRef.current.startY, svgY);
-      const lw = Math.abs(svgX - lassoRef.current.startX);
-      const lh = Math.abs(svgY - lassoRef.current.startY);
-      const r = { x: lx, y: ly, w: lw, h: lh };
-      lassoRef.current.rect = r;
-      setLassoRect(r);
-      return;
-    }
-
     if (!panRef.current) return;
     const el = scrollRef.current;
     if (!el) return;
@@ -6796,34 +6816,6 @@ function GanttTab() {
     el.scrollTop = panRef.current.scrollTop - dy;
   }
   function onPanEnd() {
-    // Finish lasso — select flights within rectangle
-    const lr = lassoRef.current?.rect;
-    if (lassoRef.current && lr && lr.w > 5 && lr.h > 5) {
-      const lx1 = lr.x, ly1 = lr.y;
-      const lx2 = lx1 + lr.w, ly2 = ly1 + lr.h;
-      const newSel = new Set();
-      flights.forEach(f => {
-        const wm = weekMins(f.day, f.dep);
-        const fx = localWMinsToX(wm);
-        const fw = (f.block / 60) * hourW;
-        // Find flight's row Y
-        const acIdx = rowLayout.visibleAc.findIndex(a => a.id === f.acId);
-        if (acIdx < 0) return;
-        const fy = rowLayout.ys[acIdx]?.y ?? 0;
-        const fh = rowLayout.ys[acIdx]?.h ?? ROW_HEIGHT;
-        // Check overlap with lasso rectangle
-        if (fx + fw > lx1 && fx < lx2 && fy + fh > ly1 && fy < ly2) {
-          newSel.add(f.id);
-        }
-      });
-      if (newSel.size > 0) setSelected(newSel);
-      lassoRef.current = null;
-      setLassoRect(null);
-      return;
-    }
-    lassoRef.current = null;
-    setLassoRect(null);
-
     if (panRef.current) {
       panRef.current = null;
       const el = scrollRef.current;
