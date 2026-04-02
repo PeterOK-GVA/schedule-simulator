@@ -5687,7 +5687,6 @@ function useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveR
   }
 
   const DRAG_THRESHOLD = 3;
-  const DRAG_TIME_THRESHOLD = 50; // ms — brief hold before engaging drag (double-click is protected by clickTimerRef)
 
   // ── Start drag — NO React state changes (no re-render) ───────────
   const startDrag = useCallback((e, flightId) => {
@@ -5698,7 +5697,7 @@ function useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveR
     const f = flightsRef.current.find(x => x.id === flightId);
     if (!f) return;
 
-    const { cx } = clientXY(e);
+    const { cx, cy } = clientXY(e);
     const origRowIdx = aircraftRef.current.findIndex(a => a.id === f.acId);
 
     dragEngagedRef.current = false;
@@ -5725,7 +5724,7 @@ function useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveR
     dragRef.current = {
       id:           flightId,
       startX:       cx,
-      startTime:    Date.now(),
+      startCY:      cy,
       origWeekMins: weekMins(f.day || 1, f.dep),
       origAcId:     f.acId,
       targetRowIdx: origRowIdx,
@@ -5767,17 +5766,17 @@ function useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveR
         const { cx, cy } = clientXY(e);
 
         if (!dragEngagedRef.current) {
-          if (Math.abs(cx - drag.startX) < DRAG_THRESHOLD) return;
-          // Don't engage drag until mouse held long enough — protects double-click
-          if (Date.now() - (drag.startTime || 0) < DRAG_TIME_THRESHOLD) return;
+          const totalDist = Math.sqrt((cx - drag.startX) ** 2 + (cy - (drag.startCY || cy)) ** 2);
+          if (totalDist < DRAG_THRESHOLD) return;
           dragEngagedRef.current = true;
         }
 
         const dx = cx - drag.startX;
         const shiftHeld = e.shiftKey;
 
-        // Compute snapped position
-        let snappedDx = dx;
+        // Compute snapped horizontal position
+        // Shift key = lock time (only move between rows)
+        let snappedDx = 0;
         if (!shiftHeld) {
           const deltaMin = (dx / hourWRef.current) * 60;
           let newWM = snapM(drag.origWeekMins + deltaMin);
@@ -5809,15 +5808,15 @@ function useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveR
           }
         }
 
-        // Move the SVG group to the SNAPPED position — NO state dispatch
+        // Move the SVG group — NO state dispatch
         const el = svgRef.current?.querySelector(`[data-flight-id="${drag.id}"]`);
         if (el) {
-          el.setAttribute("transform", shiftHeld ? "" : `translate(${snappedDx},${snappedDy})`);
+          el.setAttribute("transform", `translate(${snappedDx},${snappedDy})`);
           el.style.opacity = "0.7";
         }
 
         // Multi-select: move group flights with the same visual offset
-        if (drag.groupFlights && !shiftHeld) {
+        if (drag.groupFlights) {
           for (const gf of drag.groupFlights) {
             const gEl = svgRef.current?.querySelector(`[data-flight-id="${gf.id}"]`);
             if (gEl) {
@@ -5827,9 +5826,9 @@ function useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveR
           }
         }
 
-        // Show live time label during drag
+        // Show live label during drag
         const timeLabel = svgRef.current?.querySelector(`[data-drag-label="${drag.id}"]`);
-        if (!timeLabel && el && svgRef.current && !shiftHeld) {
+        if (!timeLabel && el && svgRef.current) {
           const ns = "http://www.w3.org/2000/svg";
           const lbl = document.createElementNS(ns, "text");
           lbl.setAttribute("data-drag-label", drag.id);
@@ -5840,7 +5839,6 @@ function useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveR
           lbl.setAttribute("text-anchor", "middle");
           lbl.style.pointerEvents = "none";
           lbl.style.userSelect = "none";
-          // Add background rect for readability
           const bg = document.createElementNS(ns, "rect");
           bg.setAttribute("data-drag-label-bg", drag.id);
           bg.setAttribute("rx", "3");
@@ -5853,7 +5851,7 @@ function useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveR
         }
         const activeLbl = svgRef.current?.querySelector(`[data-drag-label="${drag.id}"]`);
         const activeBg = svgRef.current?.querySelector(`[data-drag-label-bg="${drag.id}"]`);
-        if (activeLbl && !shiftHeld) {
+        if (activeLbl) {
           const h = Math.floor(drag.finalDep / 60);
           const m = drag.finalDep % 60;
           const dayNames = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
@@ -5868,8 +5866,11 @@ function useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveR
           const arrDayIdx = ((drag.finalDay - 1) + arrDayOffset) % 7;
           const arrDayStr = dayNames[arrDayIdx] || "";
           const showArrDay = arrDayOffset > 0 ? ` ${arrDayStr}` : "";
-          activeLbl.textContent = `${dayStr} ${depStr} → ${arrStr}${showArrDay}`;
-          // Position above the block, accounting for LABEL_WIDTH
+          const targetAcName = aircraftRef.current[drag.targetRowIdx]?.reg || "";
+          activeLbl.textContent = shiftHeld
+            ? `↕ ${targetAcName || "Move to row"}`
+            : `${dayStr} ${depStr} → ${arrStr}${showArrDay}`;
+          // Position above the block
           const origX = LABEL_WIDTH + (drag.origWeekMins / 60) * hourWRef.current;
           const blockW = ((drag.origBlock || 60) / 60) * hourWRef.current;
           const lblX = origX + snappedDx + blockW / 2;
@@ -5877,7 +5878,6 @@ function useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveR
           const lblY = (elRect?.y || 0) - 6;
           activeLbl.setAttribute("x", String(lblX));
           activeLbl.setAttribute("y", String(lblY));
-          // Size the background rect around the text
           if (activeBg) {
             const tw = activeLbl.textContent.length * 6.5;
             activeBg.setAttribute("x", String(lblX - tw / 2 - 4));
@@ -5885,9 +5885,6 @@ function useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveR
             activeBg.setAttribute("width", String(tw + 8));
             activeBg.setAttribute("height", "14");
           }
-        } else if (activeLbl && shiftHeld) {
-          activeLbl.textContent = "";
-          if (activeBg) activeBg.setAttribute("width", "0");
         }
 
         // (target row tracking is handled above in the vertical offset computation)
