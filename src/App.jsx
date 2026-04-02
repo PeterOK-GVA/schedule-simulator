@@ -8575,7 +8575,7 @@ function GanttTab() {
 
             {/* Retime */}
             <span style={{ fontSize: 10, fontWeight: 600, color: C.brownLight }}>Retime:</span>
-            {[-60, -30, -15, +15, +30, +60].map(m => (
+            {[-60, -30, -15, -10, -5, +5, +10, +15, +30, +60].map(m => (
               <button key={m} onClick={() => {
                 dispatch({ type: A.BULK_RETIME, ids: selected, shiftMins: m });
               }} style={{
