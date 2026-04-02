@@ -8612,6 +8612,29 @@ function GanttTab() {
               fontSize: 10, fontWeight: 600, fontFamily: FONT,
             }}>Park</button>
 
+            <div style={{ width: 1, height: 24, background: C.brownLight }} />
+
+            {/* Duplicate group */}
+            <button onClick={() => {
+              dispatch({ type: A.HISTORY_PUSH });
+              const newIds = new Set();
+              selFlights.forEach(f => {
+                const newId = genFlightId();
+                dispatch({ type: A.ADD_FLIGHT, flight: {
+                  id: newId, acId: f.acId, route: f.route, dep: f.dep, block: f.block,
+                  type: f.type, flightNum: f.flightNum, day: f.day,
+                  cargoOp: f.cargoOp || "none", payload: f.payload || 0,
+                  customer: f.customer || "",
+                }, _noHistory: true });
+                newIds.add(newId);
+              });
+              setSelected(newIds);
+            }} style={{
+              background: C.yellowLight, color: C.yellowHeavy, border: `1px solid ${C.yellowHeavy}`,
+              padding: "4px 10px", borderRadius: 4, cursor: "pointer",
+              fontSize: 10, fontWeight: 700, fontFamily: FONT,
+            }}>Duplicate {selected.size}</button>
+
             <div style={{ flex: 1 }} />
 
             {/* Delete */}
