@@ -6738,8 +6738,8 @@ function GanttTab() {
   // Click-and-drag panning on empty Gantt space
   const pannedRef = useRef(false);
   // ── Lasso / marquee select (Alt+drag on background) ────────────────
-  const lassoRef = useRef(null);
-  const [lassoRect, setLassoRect] = useState(null); // { x, y, w, h } in SVG coords
+  const lassoRef = useRef(null); // { startX, startY, rect: { x, y, w, h } }
+  const [lassoRect, setLassoRect] = useState(null); // for rendering only
 
   function onPanStart(e) {
     if (e.button !== 0) return;
@@ -6753,7 +6753,7 @@ function GanttTab() {
       const scrollEl = scrollRef.current;
       const svgX = e.clientX - rect.left + (scrollEl?.scrollLeft || 0);
       const svgY = e.clientY - rect.top + (scrollEl?.scrollTop || 0);
-      lassoRef.current = { startX: svgX, startY: svgY, clientX: e.clientX, clientY: e.clientY };
+      lassoRef.current = { startX: svgX, startY: svgY, rect: { x: svgX, y: svgY, w: 0, h: 0 } };
       setLassoRect({ x: svgX, y: svgY, w: 0, h: 0 });
       return;
     }
@@ -6778,7 +6778,9 @@ function GanttTab() {
       const ly = Math.min(lassoRef.current.startY, svgY);
       const lw = Math.abs(svgX - lassoRef.current.startX);
       const lh = Math.abs(svgY - lassoRef.current.startY);
-      setLassoRect({ x: lx, y: ly, w: lw, h: lh });
+      const r = { x: lx, y: ly, w: lw, h: lh };
+      lassoRef.current.rect = r;
+      setLassoRect(r);
       return;
     }
 
@@ -6793,9 +6795,10 @@ function GanttTab() {
   }
   function onPanEnd() {
     // Finish lasso — select flights within rectangle
-    if (lassoRef.current && lassoRect && lassoRect.w > 5 && lassoRect.h > 5) {
-      const lx1 = lassoRect.x, ly1 = lassoRect.y;
-      const lx2 = lx1 + lassoRect.w, ly2 = ly1 + lassoRect.h;
+    const lr = lassoRef.current?.rect;
+    if (lassoRef.current && lr && lr.w > 5 && lr.h > 5) {
+      const lx1 = lr.x, ly1 = lr.y;
+      const lx2 = lx1 + lr.w, ly2 = ly1 + lr.h;
       const newSel = new Set();
       flights.forEach(f => {
         const wm = weekMins(f.day, f.dep);
