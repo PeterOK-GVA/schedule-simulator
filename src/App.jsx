@@ -13551,7 +13551,6 @@ function AppShell() {
     setFlightRows(rows => rows.map(r => {
       if (r._key !== key) return r;
       const updated = { ...r, [field]: value };
-      // When tail changes, update flight number prefix
       if (field === "acId") {
         const ac = aircraft.find(a => a.id === value);
         if (ac) {
@@ -13561,7 +13560,6 @@ function AppShell() {
           updated.flightNum = currentNum ? `${prefix} ${currentNum}` : `${prefix} `;
         }
       }
-      // Ferry and maintenance flights never carry cargo
       if (field === "type" && (value === "P" || value === "M")) updated.cargoOp = "none";
       return updated;
     }));
@@ -13573,26 +13571,58 @@ function AppShell() {
 
   function saveAllFlightRows() {
     let added = 0;
+    // First pass: resolve block times and build flight objects
+    const resolved = [];
     flightRows.forEach(row => {
-      const [hh, mm] = (row.dep || "06:00").split(":").map(Number);
       const acId = row.acId || (aircraft.length ? aircraft[0].id : "");
       if (!acId) return;
       const d = (row.depApt || "").toUpperCase();
       const a = (row.arrApt || "").toUpperCase();
       const route = d && a ? `${d}-${a}` : "";
       if (!route) return;
-      const rowAoc = (() => { const ac = aircraft.find(a => a.id === acId); return ac ? deriveAoc(ac.reg).code : null; })();
+      const rowAoc = (() => { const ac = aircraft.find(x => x.id === acId); return ac ? deriveAoc(ac.reg).code : null; })();
       const tableBlock = lookupBlock(route, rowAoc);
       const tablePayload = lookupPayload(route, rowAoc);
       const est = !tableBlock && d && a ? estimateBlock(d, a, activeSeason) : null;
       const block = tableBlock || (est ? est.blockMins : 90);
       const payload = tablePayload ?? (est ? est.payloadKg : 0);
-      const days = row.days && row.days.length > 0 ? row.days : [1];
-      days.forEach(day => {
+      const [hh, mm] = (row.dep || "06:00").split(":").map(Number);
+      resolved.push({
+        acId, route, dep: (hh || 0) * 60 + (mm || 0), block, payload,
+        type: row.type || "F", flightNum: row.flightNum || "",
+        days: row.days && row.days.length > 0 ? row.days : [1],
+        cargoOp: row.cargoOp || "both",
+        customer: row.customer || "",
+      });
+    });
+
+    // Second pass: auto-space — for rows 1+ where the user left the default dep time,
+    // recalculate based on previous flight's arrival + turn time
+    for (let i = 1; i < resolved.length; i++) {
+      const prev = resolved[i - 1];
+      const curr = resolved[i];
+      // Only auto-space if on the same aircraft (same rotation)
+      if (prev.acId !== curr.acId) continue;
+      const prevArr = prev.dep + prev.block;
+      const turn = getMinTurnFromPair(
+        { type: prev.type, cargoOp: prev.cargoOp },
+        { type: curr.type, cargoOp: curr.cargoOp }
+      );
+      const turnMins = turn.label === "tech stop" ? MIN_TURN : CARGO_MIN_TURN;
+      const autoDep = Math.ceil((prevArr + turnMins) / SNAP) * SNAP;
+      // Apply if the current dep would overlap or is before the earliest valid time
+      if (curr.dep < autoDep) {
+        curr.dep = autoDep % DAY_MINS;
+      }
+    }
+
+    // Third pass: dispatch all flights
+    resolved.forEach(r => {
+      r.days.forEach(day => {
         dispatch({ type: A.ADD_FLIGHT, flight: {
-          acId, route, dep: (hh || 0) * 60 + (mm || 0), block, payload,
-          type: row.type || "F", flightNum: row.flightNum || "", day,
-          cargoOp: row.cargoOp || "both",
+          acId: r.acId, route: r.route, dep: r.dep, block: r.block, payload: r.payload,
+          type: r.type, flightNum: r.flightNum, day,
+          cargoOp: r.cargoOp, customer: r.customer,
         }});
         added++;
       });
@@ -14505,34 +14535,15 @@ function AppShell() {
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <button onClick={() => {
               const lastRow = flightRows[flightRows.length - 1];
-              let nextDep = "06:00";
-              if (lastRow && lastRow.dep) {
-                const [hh, mm] = lastRow.dep.split(":").map(Number);
-                const depMins = (hh || 0) * 60 + (mm || 0);
-                // Compute arrival: dep + block time for the route
-                const ld = (lastRow.depApt || "").toUpperCase();
-                const la = (lastRow.arrApt || "").toUpperCase();
-                const lRoute = ld && la ? `${ld}-${la}` : "";
-                const lAoc = (() => { const ac = aircraft.find(a => a.id === (lastRow.acId || "")); return ac ? deriveAoc(ac.reg).code : null; })();
-                const lBlock = lRoute ? lookupBlock(lRoute, lAoc) : null;
-                const lEst = !lBlock && ld && la ? estimateBlock(ld, la, activeSeason) : null;
-                const blockMins = lBlock || (lEst ? lEst.blockMins : 0);
-                // Turn time: tech stop (1.5h) if no cargo on either side, otherwise 3h
-                const newType = lastRow.type || "F";
-                const newCargoOp = (newType === "P" || newType === "M") ? "none" : (lastRow.cargoOp || "both");
-                const isTechStop = getMinTurnFromPair(
-                  { type: lastRow.type, cargoOp: lastRow.cargoOp },
-                  { type: newType, cargoOp: newCargoOp }
-                ).label === "tech stop";
-                const turnMins = blockMins > 0
-                  ? (isTechStop ? MIN_TURN : CARGO_MIN_TURN)
-                  : CARGO_MIN_TURN; // fallback 3h if no route/block known
-                const totalMin = depMins + blockMins + turnMins;
-                const nh = Math.floor(totalMin / 60) % 24;
-                const nm = totalMin % 60;
-                nextDep = `${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
-              }
-              setFlightRows([...flightRows, makeFlightRow(lastRow ? { acId: lastRow.acId, type: lastRow.type, cargoOp: lastRow.cargoOp, days: [...(lastRow.days || [1])], dep: nextDep } : undefined)]);
+              const prefill = lastRow ? {
+                acId: lastRow.acId,
+                type: lastRow.type,
+                cargoOp: lastRow.cargoOp,
+                days: [...(lastRow.days || [1])],
+                dep: lastRow.dep || "06:00",
+                depApt: lastRow.arrApt || "", // chain: previous arrival → next departure
+              } : undefined;
+              setFlightRows([...flightRows, makeFlightRow(prefill)]);
             }} style={{
               background: "transparent", color: C.yellowHeavy,
               border: `1.5px dashed ${C.yellowHeavy}`,
