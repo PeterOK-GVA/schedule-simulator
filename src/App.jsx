@@ -13596,12 +13596,11 @@ function AppShell() {
       });
     });
 
-    // Second pass: auto-space — for rows 1+ where the user left the default dep time,
-    // recalculate based on previous flight's arrival + turn time
+    // Second pass: auto-space consecutive flights on the same aircraft
+    // Each flight departs after the previous flight's arrival + appropriate turn time
     for (let i = 1; i < resolved.length; i++) {
       const prev = resolved[i - 1];
       const curr = resolved[i];
-      // Only auto-space if on the same aircraft (same rotation)
       if (prev.acId !== curr.acId) continue;
       const prevArr = prev.dep + prev.block;
       const turn = getMinTurnFromPair(
@@ -13610,18 +13609,18 @@ function AppShell() {
       );
       const turnMins = turn.label === "tech stop" ? MIN_TURN : CARGO_MIN_TURN;
       const autoDep = Math.ceil((prevArr + turnMins) / SNAP) * SNAP;
-      // Apply if the current dep would overlap or is before the earliest valid time
-      if (curr.dep < autoDep) {
-        curr.dep = autoDep % DAY_MINS;
-      }
+      curr.dep = autoDep;
     }
 
-    // Third pass: dispatch all flights
+    // Third pass: dispatch all flights (handle day wrapping from auto-spacing)
     resolved.forEach(r => {
+      const dayOffset = Math.floor(r.dep / DAY_MINS);
+      const depInDay = r.dep % DAY_MINS;
       r.days.forEach(day => {
+        const actualDay = ((day - 1 + dayOffset) % 7) + 1;
         dispatch({ type: A.ADD_FLIGHT, flight: {
-          acId: r.acId, route: r.route, dep: r.dep, block: r.block, payload: r.payload,
-          type: r.type, flightNum: r.flightNum, day,
+          acId: r.acId, route: r.route, dep: depInDay, block: r.block, payload: r.payload,
+          type: r.type, flightNum: r.flightNum, day: actualDay,
           cargoOp: r.cargoOp, customer: r.customer,
         }});
         added++;
