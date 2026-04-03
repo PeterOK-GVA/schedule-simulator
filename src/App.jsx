@@ -12896,31 +12896,28 @@ function CompareTab() {
     const nameB = dataB?.name || dataB?.title || dataB?.scenarioName || "Version B";
     const exportRows = filteredRows.map(r => {
       const f = r.b || r.a;
+      const [orig, dest] = (f.route || "").split("-");
+      const sta = f.dep + f.block;
+      const p1 = dayShiftUtc(f.dep, f.block);
       return {
         "Change": r.status.toUpperCase(),
-        "Flight No": f.flightNum,
-        "Route (From)": r.a?.route || "—",
-        "Route (To)": r.b?.route || "—",
-        "Day": dayNames[(f.day - 1) % 7],
-        "DOW": f.day,
-        "Tail (From)": r.a?.tail || "—",
-        "STD (From)": r.a ? toHHMM(r.a.dep) : "—",
-        "Block (From)": r.a ? `${r.a.block}m` : "—",
-        "Tail (To)": r.b?.tail || "—",
-        "STD (To)": r.b ? toHHMM(r.b.dep) : "—",
-        "Block (To)": r.b ? `${r.b.block}m` : "—",
-        "Type": f.type,
-        "Cargo (From)": r.a?.cargoOp || "—",
-        "Cargo (To)": r.b?.cargoOp || "—",
+        "Flight No": f.flightNum || "",
+        "Tail": f.tail || "",
+        "Origin": orig || "",
+        "Dest": dest || "",
+        "DOW (Zulu)": f.day,
+        "STD (Zulu)": toHHMM(f.dep),
+        "STA (Zulu)": toHHMM(sta),
+        "+1 (Zulu)": p1 > 0 ? `+${p1}` : "",
         "Change Description": r.changes.join("; ") || "No change",
+        "Notes": "",
       };
     });
     const ws = XLSX.utils.json_to_sheet(exportRows);
-    // Set column widths
     ws["!cols"] = [
-      { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 6 }, { wch: 5 },
-      { wch: 12 }, { wch: 8 }, { wch: 8 }, { wch: 12 }, { wch: 8 }, { wch: 8 },
-      { wch: 6 }, { wch: 10 }, { wch: 40 },
+      { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 6 }, { wch: 6 },
+      { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 8 },
+      { wch: 40 }, { wch: 30 },
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Schedule Changes");
@@ -13008,43 +13005,47 @@ function CompareTab() {
           <div style={{ border: `1px solid ${C.brownLight}`, borderRadius: 8, overflow: "hidden" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr>
-                <th style={{ ...thS, width: 50 }}></th>
-                <th style={thS}>Flight</th>
-                <th style={thS}>Route</th>
-                <th style={{ ...thS, width: 50 }}>Day</th>
-                <th style={thS}>Tail (From)</th>
-                <th style={thS}>STD (From)</th>
-                <th style={thS}>Tail (To)</th>
-                <th style={thS}>STD (To)</th>
-                <th style={thS}>Block</th>
-                <th style={{ ...thS, minWidth: 200 }}>Change Description</th>
+                <th style={{ ...thS, width: 44 }}></th>
+                <th style={thS}>Flight No</th>
+                <th style={thS}>Tail</th>
+                <th style={thS}>Origin</th>
+                <th style={thS}>Dest</th>
+                <th style={{ ...thS, width: 50 }}>DOW</th>
+                <th style={thS}>STD (Z)</th>
+                <th style={thS}>STA (Z)</th>
+                <th style={{ ...thS, width: 36 }}>+1</th>
+                <th style={thS}>Change</th>
+                <th style={thS}>Notes</th>
               </tr></thead>
               <tbody>
                 {filteredRows.length === 0 && (
-                  <tr><td colSpan={10} style={{ ...tdS, textAlign: "center", color: C.textMuted, padding: 30 }}>
+                  <tr><td colSpan={11} style={{ ...tdS, textAlign: "center", color: C.textMuted, padding: 30 }}>
                     {filter !== "all" ? "No flights match this filter." : "No changes detected."}
                   </td></tr>
                 )}
-                {filteredRows.map(r => {
+                {filteredRows.map((r, ri) => {
                   const ss = statusStyle[r.status];
                   const f = r.b || r.a;
-                  const fmtBT = (m) => { const h = Math.floor(m/60), mn = m%60; return h > 0 ? `${h}h${mn > 0 ? ` ${mn}m` : ""}` : `${mn}m`; };
+                  const [orig, dest] = (f.route || "").split("-");
+                  const sta = f.dep + f.block;
+                  const p1 = dayShiftUtc(f.dep, f.block);
                   return (
-                    <tr key={r.key} style={{ background: ss.bg, borderLeft: `3px solid ${ss.border}` }}>
+                    <tr key={ri} style={{ background: ss.bg, borderLeft: `3px solid ${ss.border}` }}>
                       <td style={tdS}>
                         <span style={{ background: ss.badge.bg, color: ss.badge.color, fontSize: 8, fontWeight: 700, padding: "2px 6px", borderRadius: 3, letterSpacing: 0.4 }}>{ss.badge.label}</span>
                       </td>
                       <td style={{ ...tdS, fontFamily: MONO, fontWeight: 700, fontSize: 11 }}>{f.flightNum || "—"}</td>
-                      <td style={{ ...tdS, fontFamily: MONO, fontWeight: 600, color: C.brownDark }}>{f.route}</td>
+                      <td style={{ ...tdS, fontFamily: MONO, fontSize: 10 }}>{f.tail}</td>
+                      <td style={{ ...tdS, fontFamily: MONO, fontWeight: 600, fontSize: 11 }}>{orig}</td>
+                      <td style={{ ...tdS, fontFamily: MONO, fontWeight: 600, fontSize: 11 }}>{dest}</td>
                       <td style={{ ...tdS, fontFamily: MONO, fontSize: 10, textAlign: "center" }}>{dayNames[(f.day - 1) % 7]}</td>
-                      <td style={{ ...tdS, fontFamily: MONO, fontSize: 10 }}>{r.a?.tail || "—"}</td>
-                      <td style={{ ...tdS, fontFamily: MONO, fontSize: 11 }}>{r.a ? toHHMM(r.a.dep) : "—"}</td>
-                      <td style={{ ...tdS, fontFamily: MONO, fontSize: 10, fontWeight: r.a && r.b && r.a.tail !== r.b.tail ? 700 : 400, color: r.a && r.b && r.a.tail !== r.b.tail ? C.yellowHeavy : C.text }}>{r.b?.tail || "—"}</td>
-                      <td style={{ ...tdS, fontFamily: MONO, fontSize: 11, fontWeight: r.a && r.b && r.a.dep !== r.b.dep ? 700 : 400, color: r.a && r.b && r.a.dep !== r.b.dep ? C.yellowHeavy : C.text }}>{r.b ? toHHMM(r.b.dep) : "—"}</td>
-                      <td style={{ ...tdS, fontFamily: MONO, fontSize: 10 }}>{fmtBT(f.block)}</td>
+                      <td style={{ ...tdS, fontFamily: MONO, fontWeight: 700, fontSize: 11 }}>{toHHMM(f.dep)}</td>
+                      <td style={{ ...tdS, fontFamily: MONO, fontWeight: 700, fontSize: 11 }}>{toHHMM(sta)}</td>
+                      <td style={{ ...tdS, fontFamily: MONO, fontSize: 10, textAlign: "center", color: p1 > 0 ? C.yellowHeavy : C.textMuted }}>{p1 > 0 ? `+${p1}` : ""}</td>
                       <td style={{ ...tdS, fontSize: 10, color: C.textSoft, lineHeight: 1.4 }}>
-                        {r.changes.length > 0 ? r.changes.join("; ") : <span style={{ color: C.textMuted }}>No change</span>}
+                        {r.changes.length > 0 ? r.changes.join("; ") : <span style={{ color: C.textMuted }}>—</span>}
                       </td>
+                      <td style={{ ...tdS, fontSize: 10, color: C.textMuted }}></td>
                     </tr>
                   );
                 })}
