@@ -12836,7 +12836,6 @@ function CompareTab() {
         if (a.dep !== b.dep) changes.push(`Retime STD ${toHHMM(a.dep)} → ${toHHMM(b.dep)}`);
         const staA = a.dep + a.block, staB = b.dep + b.block;
         if (staA !== staB) changes.push(`STA ${toHHMM(staA)} → ${toHHMM(staB)}`);
-        if (a.tail !== b.tail) changes.push(`Reassign ${a.tail} → ${b.tail}`);
         if (changes.length > 0) status = "changed";
       }
       return { key: k, a, b, status, changes };
