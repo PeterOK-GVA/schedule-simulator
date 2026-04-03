@@ -12779,10 +12779,10 @@ function CompareTab() {
     }));
   }
 
+  // Compare two flights on the same route (route changes handled separately as remove+add)
   function compareFn(a, b) {
     const changes = [];
     if (a.flightNum !== b.flightNum) changes.push(`Flight No ${a.flightNum || "—"} → ${b.flightNum || "—"}`);
-    if (a.route !== b.route) changes.push(`Route ${a.route} → ${b.route}`);
     if (a.dep !== b.dep) changes.push(`Retime STD ${toHHMM(a.dep)} → ${toHHMM(b.dep)}`);
     const staA = a.dep + a.block, staB = b.dep + b.block;
     if (staA !== staB) changes.push(`STA ${toHHMM(staA)} → ${toHHMM(staB)}`);
@@ -12854,8 +12854,14 @@ function CompareTab() {
 
     Object.entries(pairMap).forEach(([ai, bi]) => {
       const fa = listA[ai], fb = listB[bi];
-      const changes = compareFn(fa, fb);
-      rows.push({ a: fa, b: fb, status: changes.length > 0 ? "changed" : "unchanged", changes });
+      // Route change = treat as removed old + added new (different operational flight)
+      if (fa.route !== fb.route) {
+        rows.push({ a: fa, b: null, status: "removed", changes: [`Replaced by ${fb.route}`] });
+        rows.push({ a: null, b: fb, status: "added", changes: [`Replaces ${fa.route}`] });
+      } else {
+        const changes = compareFn(fa, fb);
+        rows.push({ a: fa, b: fb, status: changes.length > 0 ? "changed" : "unchanged", changes });
+      }
     });
 
     // Unmatched A = removed
