@@ -12762,54 +12762,26 @@ function CompareTab() {
 
   if (loading || cloud.loading) return <div style={{ padding: 60, textAlign: "center", color: C.textMuted, fontFamily: FONT }}>Loading…</div>;
 
-  // ── Diff logic — flight-level comparison ───────────────────────────
-  // Key by flightNum + day + tail so route/time changes show as "changed" not "removed+added"
-  // For flights without a flight number, fall back to route-based key
-  function buildFlightMap(fList, acList) {
-    const map = {};
+  // ── Diff logic — multi-pass flight matching ─────────────────────────
+  function enrichFlights(fList, acList) {
     const acMap = {};
     (acList || []).forEach(a => { acMap[a.id] = a.reg || ""; });
-    // Sort by dep time within each day so positional matching works for unnamed flights
-    const sorted = [...(fList || [])].sort((a, b) => {
-      const da = (a.day || 1) * 10000 + (a.dep || 0);
-      const db = (b.day || 1) * 10000 + (b.dep || 0);
-      return da - db;
-    });
-    const seqCounters = {};
-    sorted.forEach(f => {
-      const fn = (f.flightNum || "").trim();
-      const tail = acMap[f.acId] || "";
-      const day = f.day || 1;
-      // Flights with flight numbers: key by fn + day + tail
-      // Flights without: key by tail + day + sequence index
-      let k;
-      if (fn) {
-        k = `${fn}|${day}|${tail}`;
-      } else {
-        const base = `_${tail}|${day}`;
-        seqCounters[base] = (seqCounters[base] || 0) + 1;
-        k = `${base}|${seqCounters[base]}`;
-      }
-      // Handle duplicate keys (same flight number on same day on same tail)
-      if (map[k]) {
-        let idx = 2;
-        while (map[k + "|" + idx]) idx++;
-        k = k + "|" + idx;
-      }
-      map[k] = {
-        key: k,
-        flightNum: fn,
-        route: f.route || "",
-        dep: f.dep,
-        block: f.block,
-        day,
-        type: f.type || "F",
-        tail,
-        cargoOp: f.cargoOp || "both",
-        customer: f.customer || "",
-      };
-    });
-    return map;
+    return (fList || []).map(f => ({
+      flightNum: (f.flightNum || "").trim(),
+      route: f.route || "", dep: f.dep, block: f.block,
+      day: f.day || 1, type: f.type || "F", tail: acMap[f.acId] || "",
+      cargoOp: f.cargoOp || "both", customer: f.customer || "",
+    }));
+  }
+
+  function compareFn(a, b) {
+    const changes = [];
+    if (a.flightNum !== b.flightNum) changes.push(`Flight No ${a.flightNum || "—"} → ${b.flightNum || "—"}`);
+    if (a.route !== b.route) changes.push(`Route ${a.route} → ${b.route}`);
+    if (a.dep !== b.dep) changes.push(`Retime STD ${toHHMM(a.dep)} → ${toHHMM(b.dep)}`);
+    const staA = a.dep + a.block, staB = b.dep + b.block;
+    if (staA !== staB) changes.push(`STA ${toHHMM(staA)} → ${toHHMM(staB)}`);
+    return changes;
   }
 
   const canCompare = dataA && dataB && pickA !== pickB && !loadingData;
@@ -12817,29 +12789,85 @@ function CompareTab() {
   const dayNames = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 
   if (canCompare) {
-    const mapA = buildFlightMap(dataA.flights, dataA.aircraft);
-    const mapB = buildFlightMap(dataB.flights, dataB.aircraft);
-    const allKeys = new Set([...Object.keys(mapA), ...Object.keys(mapB)]);
-    rows = [...allKeys].map(k => {
-      const a = mapA[k], b = mapB[k];
-      let status = "unchanged";
-      let changes = [];
-      if (a && !b) {
-        status = "removed";
-        changes.push(`Remove ${a.flightNum || a.route} on ${dayNames[(a.day - 1) % 7]}`);
-      } else if (!a && b) {
-        status = "added";
-        changes.push(`Add ${b.flightNum || b.route} on ${dayNames[(b.day - 1) % 7]} dep ${toHHMM(b.dep)} (${b.tail})`);
-      } else if (a && b) {
-        if (a.flightNum !== b.flightNum) changes.push(`Flight No ${a.flightNum || "—"} → ${b.flightNum || "—"}`);
-        if (a.route !== b.route) changes.push(`Route ${a.route} → ${b.route}`);
-        if (a.dep !== b.dep) changes.push(`Retime STD ${toHHMM(a.dep)} → ${toHHMM(b.dep)}`);
-        const staA = a.dep + a.block, staB = b.dep + b.block;
-        if (staA !== staB) changes.push(`STA ${toHHMM(staA)} → ${toHHMM(staB)}`);
-        if (changes.length > 0) status = "changed";
+    const listA = enrichFlights(dataA.flights, dataA.aircraft);
+    const listB = enrichFlights(dataB.flights, dataB.aircraft);
+    const matchedA = new Set(), matchedB = new Set();
+
+    // Pass 1: exact match by flightNum + day + tail (strongest match)
+    listB.forEach((fb, bi) => {
+      if (!fb.flightNum) return;
+      const ai = listA.findIndex((fa, i) => !matchedA.has(i) && fa.flightNum === fb.flightNum && fa.day === fb.day && fa.tail === fb.tail);
+      if (ai >= 0) { matchedA.add(ai); matchedB.add(bi); }
+    });
+
+    // Pass 2: match by route + day + dep (catches flight number changes/removals)
+    listB.forEach((fb, bi) => {
+      if (matchedB.has(bi)) return;
+      const ai = listA.findIndex((fa, i) => !matchedA.has(i) && fa.route === fb.route && fa.day === fb.day && fa.dep === fb.dep && fa.tail === fb.tail);
+      if (ai >= 0) { matchedA.add(ai); matchedB.add(bi); }
+    });
+
+    // Pass 3: match by route + day + tail (catches retimes on same route)
+    listB.forEach((fb, bi) => {
+      if (matchedB.has(bi)) return;
+      const ai = listA.findIndex((fa, i) => !matchedA.has(i) && fa.route === fb.route && fa.day === fb.day && fa.tail === fb.tail);
+      if (ai >= 0) { matchedA.add(ai); matchedB.add(bi); }
+    });
+
+    // Pass 4: match by flightNum + day only (catches tail reassignments)
+    listB.forEach((fb, bi) => {
+      if (matchedB.has(bi) || !fb.flightNum) return;
+      const ai = listA.findIndex((fa, i) => !matchedA.has(i) && fa.flightNum === fb.flightNum && fa.day === fb.day);
+      if (ai >= 0) { matchedA.add(ai); matchedB.add(bi); }
+    });
+
+    // Build paired results using a mapping from A index → B index
+    const pairMap = {}; // ai → bi
+    function tryPair(ai, bi) { if (!pairMap.hasOwnProperty(ai)) pairMap[ai] = bi; }
+
+    // Replay passes to build pairs (same order as matching above)
+    listB.forEach((fb, bi) => {
+      if (!fb.flightNum) return;
+      const ai = listA.findIndex((fa, i) => i in pairMap ? false : fa.flightNum === fb.flightNum && fa.day === fb.day && fa.tail === fb.tail);
+      if (ai >= 0 && matchedA.has(ai) && matchedB.has(bi)) tryPair(ai, bi);
+    });
+    listB.forEach((fb, bi) => {
+      if (Object.values(pairMap).includes(bi)) return;
+      const ai = listA.findIndex((fa, i) => i in pairMap ? false : fa.route === fb.route && fa.day === fb.day && fa.dep === fb.dep && fa.tail === fb.tail);
+      if (ai >= 0 && matchedA.has(ai) && matchedB.has(bi)) tryPair(ai, bi);
+    });
+    listB.forEach((fb, bi) => {
+      if (Object.values(pairMap).includes(bi)) return;
+      const ai = listA.findIndex((fa, i) => i in pairMap ? false : fa.route === fb.route && fa.day === fb.day && fa.tail === fb.tail);
+      if (ai >= 0 && matchedA.has(ai) && matchedB.has(bi)) tryPair(ai, bi);
+    });
+    listB.forEach((fb, bi) => {
+      if (Object.values(pairMap).includes(bi) || !fb.flightNum) return;
+      const ai = listA.findIndex((fa, i) => i in pairMap ? false : fa.flightNum === fb.flightNum && fa.day === fb.day);
+      if (ai >= 0 && matchedA.has(ai) && matchedB.has(bi)) tryPair(ai, bi);
+    });
+
+    Object.entries(pairMap).forEach(([ai, bi]) => {
+      const fa = listA[ai], fb = listB[bi];
+      const changes = compareFn(fa, fb);
+      rows.push({ a: fa, b: fb, status: changes.length > 0 ? "changed" : "unchanged", changes });
+    });
+
+    // Unmatched A = removed
+    listA.forEach((fa, i) => {
+      if (!matchedA.has(i)) {
+        rows.push({ a: fa, b: null, status: "removed", changes: [`Remove ${fa.flightNum || fa.route} on ${dayNames[(fa.day - 1) % 7]}`] });
       }
-      return { key: k, a, b, status, changes };
-    }).sort((x, y) => {
+    });
+
+    // Unmatched B = added
+    listB.forEach((fb, i) => {
+      if (!matchedB.has(i)) {
+        rows.push({ a: null, b: fb, status: "added", changes: [`Add ${fb.flightNum || fb.route} on ${dayNames[(fb.day - 1) % 7]} dep ${toHHMM(fb.dep)}`] });
+      }
+    });
+
+    rows.sort((x, y) => {
       // Sort by: tail, then day, then departure time
       const fa = x.b || x.a, fb = y.b || y.a;
       const tailA = fa.tail || "", tailB = fb.tail || "";
