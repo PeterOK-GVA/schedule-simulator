@@ -12841,11 +12841,13 @@ function CompareTab() {
       }
       return { key: k, a, b, status, changes };
     }).sort((x, y) => {
-      const o = { removed: 0, changed: 1, added: 2, unchanged: 3 };
-      if (o[x.status] !== o[y.status]) return o[x.status] - o[y.status];
-      const ra = (x.a || x.b).route, rb = (y.a || y.b).route;
-      if (ra !== rb) return ra.localeCompare(rb);
-      return ((x.a || x.b).day || 1) - ((y.a || y.b).day || 1);
+      // Sort by: tail, then day, then departure time
+      const fa = x.b || x.a, fb = y.b || y.a;
+      const tailA = fa.tail || "", tailB = fb.tail || "";
+      if (tailA !== tailB) return tailA.localeCompare(tailB);
+      const dayA = fa.day || 1, dayB = fb.day || 1;
+      if (dayA !== dayB) return dayA - dayB;
+      return (fa.dep || 0) - (fb.dep || 0);
     });
     counts = {
       added: rows.filter(r => r.status === "added").length,
