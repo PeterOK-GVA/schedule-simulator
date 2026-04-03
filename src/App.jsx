@@ -12901,51 +12901,67 @@ function CompareTab() {
     return true;
   });
 
-  // ── Export to Excel ───────────────────────────────────────────────
+  // ── Export to Excel (HTML .xls for styling support) ─────────────────
   function exportChanges() {
     const nameA = dataA?.name || dataA?.title || dataA?.scenarioName || "Version A";
     const nameB = dataB?.name || dataB?.title || dataB?.scenarioName || "Version B";
-    const exportRows = filteredRows.map(r => {
+    const headers = ["Change", "Flight No", "Tail", "Origin", "Dest", "DOW (Zulu)", "STD (Zulu)", "STA (Zulu)", "+1 (Zulu)", "Change Description", "Notes"];
+    const bdr = "border: 1px solid #BFBFBF;";
+    const hdrStyle = `${bdr} background: #1B365D; color: #FFFFFF; font-weight: 700; font-size: 10pt; padding: 6px 8px; text-align: left;`;
+    const cellBase = `${bdr} padding: 4px 8px; font-size: 10pt; font-family: 'Calibri', sans-serif;`;
+    const rowColors = { added: "color: #006100; background: #E2EFDA;", removed: "color: #9C0006; background: #FFC7CE;", changed: "color: #9C6500; background: #FFEB9C;", unchanged: "" };
+
+    let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets>
+<x:ExcelWorksheet><x:Name>Schedule Changes</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet>
+<x:ExcelWorksheet><x:Name>Summary</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet>
+</x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head><body>`;
+
+    // Sheet 1: Schedule Changes
+    html += `<table border="1" cellpadding="4" cellspacing="0" style="border-collapse: collapse;">`;
+    html += `<tr>${headers.map(h => `<th style="${hdrStyle}">${h}</th>`).join("")}</tr>`;
+    filteredRows.forEach(r => {
       const f = r.b || r.a;
       const [orig, dest] = (f.route || "").split("-");
       const sta = f.dep + f.block;
       const p1 = dayShiftUtc(f.dep, f.block);
-      return {
-        "Change": r.status.toUpperCase(),
-        "Flight No": f.flightNum || "",
-        "Tail": f.tail || "",
-        "Origin": orig || "",
-        "Dest": dest || "",
-        "DOW (Zulu)": f.day,
-        "STD (Zulu)": toHHMM(f.dep),
-        "STA (Zulu)": toHHMM(sta),
-        "+1 (Zulu)": p1 > 0 ? `+${p1}` : "",
-        "Change Description": r.changes.join("; ") || "No change",
-        "Notes": "",
-      };
+      const rc = rowColors[r.status] || "";
+      const cs = `${cellBase} ${rc}`;
+      const mono = `${cs} font-family: 'Consolas', 'Courier New', monospace;`;
+      html += `<tr>`;
+      html += `<td style="${cs} font-weight: 700;">${r.status.toUpperCase()}</td>`;
+      html += `<td style="${mono} font-weight: 700;">${f.flightNum || ""}</td>`;
+      html += `<td style="${mono}">${f.tail || ""}</td>`;
+      html += `<td style="${mono} font-weight: 600;">${orig || ""}</td>`;
+      html += `<td style="${mono} font-weight: 600;">${dest || ""}</td>`;
+      html += `<td style="${mono} text-align: center;">${dayNames[(f.day - 1) % 7]}</td>`;
+      html += `<td style="${mono} font-weight: 700;">${toHHMM(f.dep)}</td>`;
+      html += `<td style="${mono} font-weight: 700;">${toHHMM(sta)}</td>`;
+      html += `<td style="${mono} text-align: center;">${p1 > 0 ? `+${p1}` : ""}</td>`;
+      html += `<td style="${cs}">${r.changes.join("; ") || "No change"}</td>`;
+      html += `<td style="${cs}"></td>`;
+      html += `</tr>`;
     });
-    const ws = XLSX.utils.json_to_sheet(exportRows);
-    ws["!cols"] = [
-      { wch: 10 }, { wch: 12 }, { wch: 10 }, { wch: 6 }, { wch: 6 },
-      { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 8 },
-      { wch: 40 }, { wch: 30 },
-    ];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Schedule Changes");
-    // Summary sheet
-    const summaryData = [
-      { "Item": "Compared From", "Value": nameA },
-      { "Item": "Compared To", "Value": nameB },
-      { "Item": "Date Generated", "Value": new Date().toLocaleString("en-GB") },
-      { "Item": "Flights Added", "Value": counts.added },
-      { "Item": "Flights Removed", "Value": counts.removed },
-      { "Item": "Flights Changed", "Value": counts.changed },
-      { "Item": "Flights Unchanged", "Value": counts.unchanged },
-    ];
-    const ws2 = XLSX.utils.json_to_sheet(summaryData);
-    ws2["!cols"] = [{ wch: 20 }, { wch: 40 }];
-    XLSX.utils.book_append_sheet(wb, ws2, "Summary");
-    XLSX.writeFile(wb, `schedule_changes_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    html += `</table>`;
+
+    // Sheet 2: Summary
+    html += `<br/><table border="1" cellpadding="4" cellspacing="0" style="border-collapse: collapse;">`;
+    html += `<tr><th style="${hdrStyle}">Item</th><th style="${hdrStyle}">Value</th></tr>`;
+    [["Compared From", nameA], ["Compared To", nameB], ["Date Generated", new Date().toLocaleString("en-GB")],
+     ["Flights Added", counts.added], ["Flights Removed", counts.removed],
+     ["Flights Changed", counts.changed], ["Flights Unchanged", counts.unchanged],
+    ].forEach(([k, v]) => {
+      html += `<tr><td style="${cellBase} font-weight: 600;">${k}</td><td style="${cellBase}">${v}</td></tr>`;
+    });
+    html += `</table></body></html>`;
+
+    const blob = new Blob([html], { type: "application/vnd.ms-excel" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `schedule_changes_${new Date().toISOString().slice(0, 10)}.xls`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   const statusStyle = {
