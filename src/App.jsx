@@ -12831,12 +12831,12 @@ function CompareTab() {
         status = "added";
         changes.push(`Add ${b.flightNum || b.route} on ${dayNames[(b.day - 1) % 7]} dep ${toHHMM(b.dep)} (${b.tail})`);
       } else if (a && b) {
+        if (a.flightNum !== b.flightNum) changes.push(`Flight No ${a.flightNum || "—"} → ${b.flightNum || "—"}`);
         if (a.route !== b.route) changes.push(`Route ${a.route} → ${b.route}`);
         if (a.dep !== b.dep) changes.push(`Retime STD ${toHHMM(a.dep)} → ${toHHMM(b.dep)}`);
-        if (a.block !== b.block) changes.push(`Block ${a.block}m → ${b.block}m`);
+        const staA = a.dep + a.block, staB = b.dep + b.block;
+        if (staA !== staB) changes.push(`STA ${toHHMM(staA)} → ${toHHMM(staB)}`);
         if (a.tail !== b.tail) changes.push(`Reassign ${a.tail} → ${b.tail}`);
-        if (a.type !== b.type) changes.push(`Type ${a.type} → ${b.type}`);
-        if (a.cargoOp !== b.cargoOp) changes.push(`Cargo ${a.cargoOp} → ${b.cargoOp}`);
         if (changes.length > 0) status = "changed";
       }
       return { key: k, a, b, status, changes };
