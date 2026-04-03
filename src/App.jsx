@@ -12749,16 +12749,21 @@ function CompareTab() {
 
   // Build flat options: current + scenarios + version repo
   const options = useMemo(() => {
-    const o = [{ key: CURRENT_KEY, label: `Current — ${scenarioName || "Working"}`, group: "Current" }];
+    const fmtDate = (d) => { try { return new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
+    const o = [{ key: CURRENT_KEY, label: `Current — ${scenarioName || "Working"}`, group: "Current", detail: `${flights.length} flights · ${aircraft.length} aircraft` }];
     if (cloud.scenarios.length > 0) {
-      cloud.scenarios.forEach(sc => o.push({ key: `sc:${sc.id}`, label: `${sc.name}`, group: "Scenarios" }));
+      cloud.scenarios.forEach(sc => o.push({
+        key: `sc:${sc.id}`, label: sc.name, group: "Scenarios",
+        detail: [sc.season === "W" ? "Winter" : "Summer", sc.month, sc.author, `${sc.flightCount} flt`, `${sc.aircraftCount} ac`, fmtDate(sc.updatedAt)].filter(Boolean).join(" · "),
+        notes: sc.notes || "",
+      }));
     }
     monthGroups.forEach(mg => {
-      if (mg.baseline) o.push({ key: mg.baseline.key, label: `${mg.label} Baseline`, group: mg.label });
-      mg.versions.forEach(v => o.push({ key: v.key, label: `${mg.label} — ${v.title || "Untitled"}`, group: mg.label }));
+      if (mg.baseline) o.push({ key: mg.baseline.key, label: `${mg.label} Baseline`, group: mg.label, detail: `${mg.baseline.flights?.length || "?"} flt · ${fmtDate(mg.baseline.savedAt)}` });
+      mg.versions.forEach(v => o.push({ key: v.key, label: `${mg.label} — ${v.title || "Untitled"}`, group: mg.label, detail: `${v.flights?.length || "?"} flt · ${fmtDate(v.savedAt)}`, notes: v.rationale || "" }));
     });
     return o;
-  }, [monthGroups, scenarioName, cloud.scenarios]);
+  }, [monthGroups, scenarioName, cloud.scenarios, flights.length, aircraft.length]);
 
   if (loading || cloud.loading) return <div style={{ padding: 60, textAlign: "center", color: C.textMuted, fontFamily: FONT }}>Loading…</div>;
 
@@ -12951,21 +12956,26 @@ function CompareTab() {
   return (
     <div style={{ padding: 24, maxWidth: 1400, margin: "0 auto", fontFamily: FONT }}>
 
-      {/* ── Dual pickers ─────────────────────────────────────────── */}
-      <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap", alignItems: "flex-end" }}>
-        <div style={{ flex: 1, minWidth: 200 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>From (Baseline)</div>
-          <select value={pickA} onChange={e => setPickA(e.target.value)} style={selectStyle}>
-            {options.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
-          </select>
-        </div>
-        <div style={{ fontSize: 18, color: C.brownLight, paddingBottom: 6 }}>→</div>
-        <div style={{ flex: 1, minWidth: 200 }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>To (Proposed)</div>
-          <select value={pickB} onChange={e => setPickB(e.target.value)} style={selectStyle}>
-            {options.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
-          </select>
-        </div>
+      {/* ── Dual pickers with details ─────────────────────────── */}
+      <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap", alignItems: "stretch" }}>
+        {[["From (Baseline)", pickA, setPickA], ["To (Proposed)", pickB, setPickB]].map(([label, pick, setPick], pi) => {
+          const sel = options.find(o => o.key === pick);
+          return (
+            <div key={pi} style={{ flex: 1, minWidth: 280 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>{label}</div>
+              <select value={pick} onChange={e => setPick(e.target.value)} style={selectStyle}>
+                {options.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+              </select>
+              {sel && (
+                <div style={{ marginTop: 6, padding: "8px 12px", borderRadius: 6, background: C.offWhite2, border: `1px solid ${C.brownLight}`, fontSize: 10 }}>
+                  <div style={{ fontWeight: 700, color: C.brownDark, fontSize: 12, marginBottom: 2 }}>{sel.label}</div>
+                  {sel.detail && <div style={{ color: C.textSoft, marginBottom: sel.notes ? 4 : 0 }}>{sel.detail}</div>}
+                  {sel.notes && <div style={{ color: C.textMuted, fontStyle: "italic", lineHeight: 1.4 }}>{sel.notes}</div>}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {pickA === pickB && (
