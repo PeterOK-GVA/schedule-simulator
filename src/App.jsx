@@ -12763,27 +12763,48 @@ function CompareTab() {
   if (loading || cloud.loading) return <div style={{ padding: 60, textAlign: "center", color: C.textMuted, fontFamily: FONT }}>Loading…</div>;
 
   // ── Diff logic — flight-level comparison ───────────────────────────
-  // Key each flight by: flightNum + route + day (unique per operational flight)
-  function flightKey(f) {
-    return `${(f.flightNum || "").trim()}|${f.route}|${f.day || 1}`;
-  }
+  // Key by flightNum + day + tail so route/time changes show as "changed" not "removed+added"
+  // For flights without a flight number, fall back to route-based key
   function buildFlightMap(fList, acList) {
     const map = {};
     const acMap = {};
     (acList || []).forEach(a => { acMap[a.id] = a.reg || ""; });
-    (fList || []).forEach(f => {
-      const k = flightKey(f);
-      // If duplicate key (e.g. same flight number, route, day), append index
-      const key = map[k] ? `${k}|${map[k].dupes = (map[k].dupes || 0) + 1}` : k;
-      map[key === k ? k : key] = {
-        key: key === k ? k : key,
-        flightNum: (f.flightNum || "").trim(),
+    // Sort by dep time within each day so positional matching works for unnamed flights
+    const sorted = [...(fList || [])].sort((a, b) => {
+      const da = (a.day || 1) * 10000 + (a.dep || 0);
+      const db = (b.day || 1) * 10000 + (b.dep || 0);
+      return da - db;
+    });
+    const seqCounters = {};
+    sorted.forEach(f => {
+      const fn = (f.flightNum || "").trim();
+      const tail = acMap[f.acId] || "";
+      const day = f.day || 1;
+      // Flights with flight numbers: key by fn + day + tail
+      // Flights without: key by tail + day + sequence index
+      let k;
+      if (fn) {
+        k = `${fn}|${day}|${tail}`;
+      } else {
+        const base = `_${tail}|${day}`;
+        seqCounters[base] = (seqCounters[base] || 0) + 1;
+        k = `${base}|${seqCounters[base]}`;
+      }
+      // Handle duplicate keys (same flight number on same day on same tail)
+      if (map[k]) {
+        let idx = 2;
+        while (map[k + "|" + idx]) idx++;
+        k = k + "|" + idx;
+      }
+      map[k] = {
+        key: k,
+        flightNum: fn,
         route: f.route || "",
         dep: f.dep,
         block: f.block,
-        day: f.day || 1,
+        day,
         type: f.type || "F",
-        tail: acMap[f.acId] || "",
+        tail,
         cargoOp: f.cargoOp || "both",
         customer: f.customer || "",
       };
@@ -12810,6 +12831,7 @@ function CompareTab() {
         status = "added";
         changes.push(`Add ${b.flightNum || b.route} on ${dayNames[(b.day - 1) % 7]} dep ${toHHMM(b.dep)} (${b.tail})`);
       } else if (a && b) {
+        if (a.route !== b.route) changes.push(`Route ${a.route} → ${b.route}`);
         if (a.dep !== b.dep) changes.push(`Retime STD ${toHHMM(a.dep)} → ${toHHMM(b.dep)}`);
         if (a.block !== b.block) changes.push(`Block ${a.block}m → ${b.block}m`);
         if (a.tail !== b.tail) changes.push(`Reassign ${a.tail} → ${b.tail}`);
@@ -12848,17 +12870,19 @@ function CompareTab() {
       return {
         "Change": r.status.toUpperCase(),
         "Flight No": f.flightNum,
-        "Route": f.route,
+        "Route (From)": r.a?.route || "—",
+        "Route (To)": r.b?.route || "—",
         "Day": dayNames[(f.day - 1) % 7],
         "DOW": f.day,
-        "Tail (A)": r.a?.tail || "—",
-        "STD (A)": r.a ? toHHMM(r.a.dep) : "—",
-        "Block (A)": r.a ? `${r.a.block}m` : "—",
-        "Tail (B)": r.b?.tail || "—",
-        "STD (B)": r.b ? toHHMM(r.b.dep) : "—",
-        "Block (B)": r.b ? `${r.b.block}m` : "—",
+        "Tail (From)": r.a?.tail || "—",
+        "STD (From)": r.a ? toHHMM(r.a.dep) : "—",
+        "Block (From)": r.a ? `${r.a.block}m` : "—",
+        "Tail (To)": r.b?.tail || "—",
+        "STD (To)": r.b ? toHHMM(r.b.dep) : "—",
+        "Block (To)": r.b ? `${r.b.block}m` : "—",
         "Type": f.type,
-        "Cargo": f.cargoOp,
+        "Cargo (From)": r.a?.cargoOp || "—",
+        "Cargo (To)": r.b?.cargoOp || "—",
         "Change Description": r.changes.join("; ") || "No change",
       };
     });
