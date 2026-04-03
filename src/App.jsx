@@ -3777,44 +3777,44 @@ const SEED_AIRPORTS = [
 ];
 
 const SEED_FLIGHTS = [
-  { id: "f1", acId: "ac1", route: "HKG-GYD", dep: 740, block: 555, type: "F", flightNum: "CP 192", day: 1, cargoOp: "both", payload: 0 },
-  { id: "f2", acId: "ac1", route: "GYD-FCO", dep: 1385, block: 275, type: "F", flightNum: "CP 192", day: 1, cargoOp: "both", payload: 0 },
-  { id: "f3", acId: "ac1", route: "FCO-HKG", dep: 495, block: 690, type: "P", flightNum: "CP 177", day: 2, cargoOp: "both", payload: 0 },
-  { id: "f4", acId: "ac1", route: "HKG-GYD", dep: 1365, block: 555, type: "F", flightNum: "CP 178", day: 2, cargoOp: "both", payload: 0 },
-  { id: "f5", acId: "ac1", route: "GYD-VBS", dep: 570, block: 275, type: "F", flightNum: "CP 178", day: 3, cargoOp: "both", payload: 0 },
-  { id: "f6", acId: "ac1", route: "VBS-HKG", dep: 1265, block: 705, type: "P", flightNum: "CP 137", day: 3, cargoOp: "both", payload: 0 },
-  { id: "f7", acId: "ac1", route: "HKG-GYD", dep: 695, block: 555, type: "F", flightNum: "CP 138", day: 4, cargoOp: "both", payload: 0 },
-  { id: "f8", acId: "ac1", route: "GYD-MXP", dep: 1340, block: 290, type: "F", flightNum: "CP 138", day: 4, cargoOp: "both", payload: 0 },
-  { id: "f9", acId: "ac1", route: "MXP-HKG", dep: 1410, block: 715, type: "P", flightNum: "CP 143", day: 5, cargoOp: "both", payload: 0 },
-  { id: "f10", acId: "ac1", route: "HKG-MXP", dep: 825, block: 805, type: "F", flightNum: "CP 144", day: 6, cargoOp: "both", payload: 0 },
-  { id: "f11", acId: "ac1", route: "MXP-HKG", dep: 1250, block: 715, type: "P", flightNum: "CP 191", day: 7, cargoOp: "both", payload: 0 },
-  { id: "f12", acId: "ac2", route: "EHU-GYD", dep: 540, block: 530, type: "F", flightNum: "CP 220", day: 1, cargoOp: "both", payload: 0 },
-  { id: "f13", acId: "ac2", route: "GYD-MXP", dep: 1160, block: 290, type: "F", flightNum: "CP 220", day: 1, cargoOp: "both", payload: 0 },
-  { id: "f14", acId: "ac2", route: "MXP-LGG", dep: 175, block: 95, type: "F", flightNum: "CP 376", day: 2, cargoOp: "both", payload: 0 },
-  { id: "f15", acId: "ac2", route: "LGG-VBS", dep: 400, block: 90, type: "P", flightNum: "CP 377", day: 2, cargoOp: "both", payload: 0 },
-  { id: "f16", acId: "ac2", route: "VBS-EHU", dep: 1130, block: 670, type: "P", flightNum: "CP 219", day: 2, cargoOp: "both", payload: 0 },
-  { id: "f17", acId: "ac2", route: "EHU-GYD", dep: 540, block: 530, type: "F", flightNum: "CP 220", day: 3, cargoOp: "both", payload: 0 },
-  { id: "f18", acId: "ac2", route: "GYD-MXP", dep: 1160, block: 290, type: "F", flightNum: "CP 220", day: 3, cargoOp: "both", payload: 0 },
-  { id: "f19", acId: "ac2", route: "MXP-LGG", dep: 175, block: 95, type: "F", flightNum: "CP 364", day: 4, cargoOp: "both", payload: 0 },
-  { id: "f20", acId: "ac2", route: "LGG-VBS", dep: 400, block: 90, type: "P", flightNum: "CP 365", day: 4, cargoOp: "both", payload: 0 },
-  { id: "f21", acId: "ac2", route: "VBS-EHU", dep: 1125, block: 670, type: "P", flightNum: "CP 219", day: 4, cargoOp: "both", payload: 0 },
-  { id: "f22", acId: "ac2", route: "EHU-GYD", dep: 535, block: 530, type: "F", flightNum: "CP 220", day: 5, cargoOp: "both", payload: 0 },
-  { id: "f23", acId: "ac2", route: "GYD-VBS", dep: 1155, block: 275, type: "F", flightNum: "CP 220", day: 5, cargoOp: "both", payload: 0 },
-  { id: "f24", acId: "ac2", route: "VBS-EHU", dep: 455, block: 670, type: "P", flightNum: "CP 219", day: 6, cargoOp: "both", payload: 0 },
-  { id: "f25", acId: "ac2", route: "EHU-GYD", dep: 1305, block: 530, type: "F", flightNum: "CP 220", day: 6, cargoOp: "both", payload: 0 },
-  { id: "f26", acId: "ac2", route: "GYD-MXP", dep: 485, block: 290, type: "F", flightNum: "CP 220", day: 7, cargoOp: "both", payload: 0 },
-  { id: "f27", acId: "ac2", route: "MXP-EHU", dep: 1085, block: 660, type: "P", flightNum: "CP 219", day: 7, cargoOp: "both", payload: 0 },
-  { id: "f28", acId: "ac3", route: "GYD-VBS", dep: 475, block: 275, type: "F", flightNum: "CP 252", day: 1, cargoOp: "both", payload: 0 },
-  { id: "f29", acId: "ac3", route: "VBS-HKG", dep: 1360, block: 705, type: "P", flightNum: "CP 125", day: 1, cargoOp: "both", payload: 0 },
-  { id: "f30", acId: "ac3", route: "HKG-VBS", dep: 805, block: 785, type: "F", flightNum: "CP 126", day: 2, cargoOp: "both", payload: 0 },
-  { id: "f31", acId: "ac3", route: "VBS-PVG", dep: 390, block: 690, type: "P", flightNum: "CP 251", day: 4, cargoOp: "both", payload: 0 },
-  { id: "f32", acId: "ac3", route: "PVG-GYD", dep: 1260, block: 565, type: "F", flightNum: "CP 252", day: 4, cargoOp: "both", payload: 0 },
-  { id: "f33", acId: "ac3", route: "GYD-VBS", dep: 475, block: 275, type: "F", flightNum: "CP 252", day: 5, cargoOp: "both", payload: 0 },
-  { id: "f34", acId: "ac3", route: "VBS-HKG", dep: 995, block: 705, type: "P", flightNum: "CP 155", day: 5, cargoOp: "both", payload: 0 },
-  { id: "f35", acId: "ac3", route: "HKG-GYD", dep: 410, block: 555, type: "F", flightNum: "CP 156", day: 6, cargoOp: "both", payload: 0 },
-  { id: "f36", acId: "ac3", route: "GYD-FCO", dep: 1055, block: 275, type: "F", flightNum: "CP 156", day: 6, cargoOp: "both", payload: 0 },
-  { id: "f37", acId: "ac3", route: "FCO-PVG", dep: 395, block: 685, type: "P", flightNum: "CP 251", day: 7, cargoOp: "both", payload: 0 },
-  { id: "f38", acId: "ac3", route: "PVG-GYD", dep: 1260, block: 565, type: "F", flightNum: "CP 252", day: 7, cargoOp: "both", payload: 0 },
+  { id: "f1", acId: "ac1", route: "HKG-GYD", dep: 740, block: 555, type: "F", flightNum: "CP192", day: 1, cargoOp: "both", payload: 0 },
+  { id: "f2", acId: "ac1", route: "GYD-FCO", dep: 1385, block: 275, type: "F", flightNum: "CP192", day: 1, cargoOp: "both", payload: 0 },
+  { id: "f3", acId: "ac1", route: "FCO-HKG", dep: 495, block: 690, type: "P", flightNum: "CP177", day: 2, cargoOp: "both", payload: 0 },
+  { id: "f4", acId: "ac1", route: "HKG-GYD", dep: 1365, block: 555, type: "F", flightNum: "CP178", day: 2, cargoOp: "both", payload: 0 },
+  { id: "f5", acId: "ac1", route: "GYD-VBS", dep: 570, block: 275, type: "F", flightNum: "CP178", day: 3, cargoOp: "both", payload: 0 },
+  { id: "f6", acId: "ac1", route: "VBS-HKG", dep: 1265, block: 705, type: "P", flightNum: "CP137", day: 3, cargoOp: "both", payload: 0 },
+  { id: "f7", acId: "ac1", route: "HKG-GYD", dep: 695, block: 555, type: "F", flightNum: "CP138", day: 4, cargoOp: "both", payload: 0 },
+  { id: "f8", acId: "ac1", route: "GYD-MXP", dep: 1340, block: 290, type: "F", flightNum: "CP138", day: 4, cargoOp: "both", payload: 0 },
+  { id: "f9", acId: "ac1", route: "MXP-HKG", dep: 1410, block: 715, type: "P", flightNum: "CP143", day: 5, cargoOp: "both", payload: 0 },
+  { id: "f10", acId: "ac1", route: "HKG-MXP", dep: 825, block: 805, type: "F", flightNum: "CP144", day: 6, cargoOp: "both", payload: 0 },
+  { id: "f11", acId: "ac1", route: "MXP-HKG", dep: 1250, block: 715, type: "P", flightNum: "CP191", day: 7, cargoOp: "both", payload: 0 },
+  { id: "f12", acId: "ac2", route: "EHU-GYD", dep: 540, block: 530, type: "F", flightNum: "CP220", day: 1, cargoOp: "both", payload: 0 },
+  { id: "f13", acId: "ac2", route: "GYD-MXP", dep: 1160, block: 290, type: "F", flightNum: "CP220", day: 1, cargoOp: "both", payload: 0 },
+  { id: "f14", acId: "ac2", route: "MXP-LGG", dep: 175, block: 95, type: "F", flightNum: "CP376", day: 2, cargoOp: "both", payload: 0 },
+  { id: "f15", acId: "ac2", route: "LGG-VBS", dep: 400, block: 90, type: "P", flightNum: "CP377", day: 2, cargoOp: "both", payload: 0 },
+  { id: "f16", acId: "ac2", route: "VBS-EHU", dep: 1130, block: 670, type: "P", flightNum: "CP219", day: 2, cargoOp: "both", payload: 0 },
+  { id: "f17", acId: "ac2", route: "EHU-GYD", dep: 540, block: 530, type: "F", flightNum: "CP220", day: 3, cargoOp: "both", payload: 0 },
+  { id: "f18", acId: "ac2", route: "GYD-MXP", dep: 1160, block: 290, type: "F", flightNum: "CP220", day: 3, cargoOp: "both", payload: 0 },
+  { id: "f19", acId: "ac2", route: "MXP-LGG", dep: 175, block: 95, type: "F", flightNum: "CP364", day: 4, cargoOp: "both", payload: 0 },
+  { id: "f20", acId: "ac2", route: "LGG-VBS", dep: 400, block: 90, type: "P", flightNum: "CP365", day: 4, cargoOp: "both", payload: 0 },
+  { id: "f21", acId: "ac2", route: "VBS-EHU", dep: 1125, block: 670, type: "P", flightNum: "CP219", day: 4, cargoOp: "both", payload: 0 },
+  { id: "f22", acId: "ac2", route: "EHU-GYD", dep: 535, block: 530, type: "F", flightNum: "CP220", day: 5, cargoOp: "both", payload: 0 },
+  { id: "f23", acId: "ac2", route: "GYD-VBS", dep: 1155, block: 275, type: "F", flightNum: "CP220", day: 5, cargoOp: "both", payload: 0 },
+  { id: "f24", acId: "ac2", route: "VBS-EHU", dep: 455, block: 670, type: "P", flightNum: "CP219", day: 6, cargoOp: "both", payload: 0 },
+  { id: "f25", acId: "ac2", route: "EHU-GYD", dep: 1305, block: 530, type: "F", flightNum: "CP220", day: 6, cargoOp: "both", payload: 0 },
+  { id: "f26", acId: "ac2", route: "GYD-MXP", dep: 485, block: 290, type: "F", flightNum: "CP220", day: 7, cargoOp: "both", payload: 0 },
+  { id: "f27", acId: "ac2", route: "MXP-EHU", dep: 1085, block: 660, type: "P", flightNum: "CP219", day: 7, cargoOp: "both", payload: 0 },
+  { id: "f28", acId: "ac3", route: "GYD-VBS", dep: 475, block: 275, type: "F", flightNum: "CP252", day: 1, cargoOp: "both", payload: 0 },
+  { id: "f29", acId: "ac3", route: "VBS-HKG", dep: 1360, block: 705, type: "P", flightNum: "CP125", day: 1, cargoOp: "both", payload: 0 },
+  { id: "f30", acId: "ac3", route: "HKG-VBS", dep: 805, block: 785, type: "F", flightNum: "CP126", day: 2, cargoOp: "both", payload: 0 },
+  { id: "f31", acId: "ac3", route: "VBS-PVG", dep: 390, block: 690, type: "P", flightNum: "CP251", day: 4, cargoOp: "both", payload: 0 },
+  { id: "f32", acId: "ac3", route: "PVG-GYD", dep: 1260, block: 565, type: "F", flightNum: "CP252", day: 4, cargoOp: "both", payload: 0 },
+  { id: "f33", acId: "ac3", route: "GYD-VBS", dep: 475, block: 275, type: "F", flightNum: "CP252", day: 5, cargoOp: "both", payload: 0 },
+  { id: "f34", acId: "ac3", route: "VBS-HKG", dep: 995, block: 705, type: "P", flightNum: "CP155", day: 5, cargoOp: "both", payload: 0 },
+  { id: "f35", acId: "ac3", route: "HKG-GYD", dep: 410, block: 555, type: "F", flightNum: "CP156", day: 6, cargoOp: "both", payload: 0 },
+  { id: "f36", acId: "ac3", route: "GYD-FCO", dep: 1055, block: 275, type: "F", flightNum: "CP156", day: 6, cargoOp: "both", payload: 0 },
+  { id: "f37", acId: "ac3", route: "FCO-PVG", dep: 395, block: 685, type: "P", flightNum: "CP251", day: 7, cargoOp: "both", payload: 0 },
+  { id: "f38", acId: "ac3", route: "PVG-GYD", dep: 1260, block: 565, type: "F", flightNum: "CP252", day: 7, cargoOp: "both", payload: 0 },
   { id: "f39", acId: "ac4", route: "ORD-CAN", dep: 125, block: 985, type: "P", flightNum: "5Y336", day: 1, cargoOp: "both", payload: 0 },
   { id: "f40", acId: "ac4", route: "CAN-ANC", dep: 1290, block: 590, type: "F", flightNum: "5Y337", day: 1, cargoOp: "both", payload: 0 },
   { id: "f41", acId: "ac4", route: "ANC-NLU", dep: 530, block: 455, type: "F", flightNum: "5Y337", day: 2, cargoOp: "both", payload: 0 },
@@ -3871,6 +3871,13 @@ let nextAirportId   = 10000;
 function genFlightId()    { return "f"  + (nextFlightId++); }
 function genBlockTimeId() { return "bt" + (nextBlockTimeId++); }
 function genAirportId()   { return "a"  + (nextAirportId++); }
+
+/** Normalize flight number: remove spaces between carrier code and number, uppercase, trim.
+ *  e.g. "CP 192" → "CP192", " 5y 336 " → "5Y336" */
+function normFlightNum(fn) {
+  if (!fn) return "";
+  return fn.toString().trim().toUpperCase().replace(/\s+/g, "");
+}
 function genAircraftId()  { return "ac" + Date.now(); }
 function genMxBlockId()   { return "mx" + Date.now() + Math.random().toString(36).slice(2, 6); }
 
@@ -4272,6 +4279,7 @@ function scheduleReducer(state, action) {
 
     case A.ADD_FLIGHT: {
       const f = { ...action.flight, id: action.flight.id || genFlightId() };
+      f.flightNum = normFlightNum(f.flightNum);
       // Ferry and maintenance flights never carry cargo
       if (f.type === "P" || f.type === "M") f.cargoOp = "none";
       // Auto-populate block + payload using the unified lookup
@@ -4307,6 +4315,7 @@ function scheduleReducer(state, action) {
 
     case A.UPDATE_FLIGHT: {
       const updates = { ...action.flight };
+      if (updates.flightNum !== undefined) updates.flightNum = normFlightNum(updates.flightNum);
       // Ferry and maintenance flights never carry cargo — auto-enforce on type change
       if (updates.type === "P" || updates.type === "M") updates.cargoOp = "none";
       return {
@@ -4585,7 +4594,8 @@ function scheduleReducer(state, action) {
 
     // ── Scenario load / reset ─────────────────────────────────────────
     case A.LOAD_SCENARIO: {
-      const { flights, aircraft, scenarioName, baselineName } = action;
+      const { aircraft, scenarioName, baselineName } = action;
+      const flights = (action.flights || []).map(f => ({ ...f, flightNum: normFlightNum(f.flightNum) }));
       bumpIdCounters({ flights });
       return {
         ...state,
@@ -4602,7 +4612,8 @@ function scheduleReducer(state, action) {
 
     case A.LOAD_FULL_SCENARIO: {
       // JSON restore — replaces everything
-      const d = action.data;
+      const d = { ...action.data };
+      if (d.flights) d.flights = d.flights.map(f => ({ ...f, flightNum: normFlightNum(f.flightNum) }));
       bumpIdCounters({ flights: d.flights, blockTable: d.blockTable, airports: d.airports });
 
       // Merge saved blockTable onto seed data: saved entries override seed by route+aoc+flightNum
