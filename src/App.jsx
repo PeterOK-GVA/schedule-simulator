@@ -9991,15 +9991,15 @@ function ScheduleTableTab() {
     // MSC brand colours
     const mscNavy = "#1B365D";
     const mscGold = "#EED484";
-    const bdr = "border: 1px solid #C0C0C0;";
-    const hdr = `${bdr} background: ${mscNavy}; color: #FFFFFF; font-weight: bold; font-size: 9pt; padding: 4px 6px; text-align: center; font-family: Calibri, sans-serif;`;
-    const cell = `${bdr} font-size: 9pt; padding: 3px 6px; font-family: Calibri, sans-serif; text-align: center;`;
-    const cellL = `${bdr} font-size: 9pt; padding: 3px 6px; font-family: Calibri, sans-serif;`;
+    const hdr = `background: ${mscNavy}; color: #FFFFFF; font-weight: bold; font-size: 9pt; padding: 4px 6px; text-align: center; font-family: Calibri, sans-serif;`;
+    const cell = `font-size: 9pt; padding: 3px 6px; font-family: Calibri, sans-serif; text-align: center;`;
+    const cellL = `font-size: 9pt; padding: 3px 6px; font-family: Calibri, sans-serif;`;
 
-    // Column order: Flight No, Tail, Origin, Dest, Type, Cargo Op, Block (hrs), DOW(Z), Date(Z), STD(Z), STA(Z), +1(Z), DOW(L), Date(L), STD(L), STA(L), +1(L), Customer
-    const headers = ["Flight No", "Tail", "Origin", "Dest", "Type", "Cargo Op", "Block (hrs)",
+    // Column order: Flight No, Tail, Origin, Dest, DOW(Z), Date(Z), STD(Z), STA(Z), +1(Z), DOW(L), Date(L), STD(L), STA(L), +1(L), Type, Cargo Op, Block (hrs), Customer
+    const headers = ["Flight No", "Tail", "Origin", "Dest",
       "DOW (Zulu)", "Date (Zulu)", "STD (Zulu)", "STA (Zulu)", "+1 (Zulu)",
-      "DOW (Local)", "Date (Local)", "STD (Local)", "STA (Local)", "+1 (Local)", "Customer"];
+      "DOW (Local)", "Date (Local)", "STD (Local)", "STA (Local)", "+1 (Local)",
+      "Type", "Cargo Op", "Block (hrs)", "Customer"];
 
     let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
 <head><meta charset="utf-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets>
@@ -10007,8 +10007,8 @@ function ScheduleTableTab() {
 </x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head><body>`;
 
     // Title row
-    html += `<table border="1" cellpadding="3" cellspacing="0" style="border-collapse: collapse;">`;
-    html += `<tr><td colspan="${headers.length}" style="${bdr} background: ${mscGold}; color: ${mscNavy}; font-size: 11pt; font-weight: bold; padding: 8px 12px; font-family: Calibri, sans-serif;">`;
+    html += `<table cellpadding="3" cellspacing="0" style="border-collapse: collapse;">`;
+    html += `<tr><td colspan="${headers.length}" style="background: ${mscGold}; color: ${mscNavy}; font-size: 11pt; font-weight: bold; padding: 8px 12px; font-family: Calibri, sans-serif;">`;
     html += `MSC Air Cargo — ${scenarioName || "Schedule"}${wn ? ` · Week ${wn}/${wy}` : ""}</td></tr>`;
 
     // Header row
@@ -10034,11 +10034,8 @@ function ScheduleTableTab() {
       html += `<tr>`;
       html += `<td style="${cellL} ${rowBg}">${f.flightNum || ""}</td>`;
       html += `<td style="${cell} ${rowBg}">${f.ac?.reg || ""}</td>`;
-      html += `<td style="${cell} ${rowBg} font-weight: bold;">${f.orig}</td>`;
-      html += `<td style="${cell} ${rowBg} font-weight: bold;">${f.dest}</td>`;
-      html += `<td style="${cell} ${rowBg}">${f.type || ""}</td>`;
-      html += `<td style="${cell} ${rowBg}">${f.cargoOp || ""}</td>`;
-      html += `<td style="${cell} ${rowBg}">${+(f.block / 60).toFixed(2)}</td>`;
+      html += `<td style="${cell} ${rowBg}">${f.orig}</td>`;
+      html += `<td style="${cell} ${rowBg}">${f.dest}</td>`;
       html += `<td style="${cell} ${rowBg}">${f.day}</td>`;
       html += `<td style="${cell} ${rowBg}">${dateZ}</td>`;
       html += `<td style="${cell} ${rowBg}">${stdZ}</td>`;
@@ -10049,6 +10046,9 @@ function ScheduleTableTab() {
       html += `<td style="${cell} ${rowBg}">${stdL}</td>`;
       html += `<td style="${cell} ${rowBg}">${staL}</td>`;
       html += `<td style="${cell} ${rowBg}">${p1L > 0 ? `+${p1L}` : ""}</td>`;
+      html += `<td style="${cell} ${rowBg}">${f.type || ""}</td>`;
+      html += `<td style="${cell} ${rowBg}">${f.cargoOp || ""}</td>`;
+      html += `<td style="${cell} ${rowBg}">${+(f.block / 60).toFixed(2)}</td>`;
       html += `<td style="${cellL} ${rowBg}">${f.customer || ""}</td>`;
       html += `</tr>`;
     });
