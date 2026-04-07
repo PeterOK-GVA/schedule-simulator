@@ -13003,7 +13003,8 @@ function FeasibilityTab() {
 // ── Compare Tab ──────────────────────────────────────────────────────────────
 
 function CompareTab() {
-  const { flights, aircraft, blockTable, airports, scenarioName, scheduleDate, activeSeason } = useSchedule();
+  const { flights, aircraft, blockTable, airports, scenarioName, scheduleDate, activeSeason, lookupAirport } = useSchedule();
+  const ui = useUI();
   const repo = useVersionRepo();
   const { monthGroups, loading, deleteEntry, loadEntry } = repo;
   const cloud = useCloudScenarios();
@@ -13195,38 +13196,73 @@ function CompareTab() {
 
   // ── Export to Excel (HTML .xls for styling support) ─────────────────
   function exportChanges() {
-    const headers = ["Change", "Flight No", "Tail", "Origin", "Dest", "DOW (Zulu)", "STD (Zulu)", "STA (Zulu)", "+1 (Zulu)", "Change Description", "Notes"];
-    const bdr = "border: 1px solid #BFBFBF;";
-    const hdrStyle = `${bdr} background: #1B365D; color: #FFFFFF; font-size: 9pt; padding: 4px 6px; text-align: left; font-family: 'Calibri', sans-serif;`;
-    const cellBase = `${bdr} padding: 3px 6px; font-size: 9pt; font-family: 'Calibri', sans-serif;`;
+    const nameA = dataA?.name || dataA?.title || dataA?.scenarioName || "Version A";
+    const nameB = dataB?.name || dataB?.title || dataB?.scenarioName || "Version B";
+    const wn = ui?.weekNum, wy = ui?.weekYear;
+    const mscNavy = "#1B365D";
+    const mscGold = "#EED484";
+    const hdr = `background: ${mscNavy}; color: #FFFFFF; font-weight: bold; font-size: 9pt; padding: 4px 6px; text-align: center; font-family: Calibri, sans-serif;`;
+    const cell = `font-size: 9pt; padding: 3px 6px; font-family: Calibri, sans-serif; text-align: center;`;
+    const cellL = `font-size: 9pt; padding: 3px 6px; font-family: Calibri, sans-serif;`;
     const rowColors = { added: "color: #006100;", removed: "color: #9C0006;", changed: "color: #9C6500;", unchanged: "" };
+
+    const headers = ["Change", "Flight No", "Tail", "Origin", "Dest",
+      "DOW (Zulu)", "Date (Zulu)", "STD (Zulu)", "STA (Zulu)", "+1 (Zulu)",
+      "DOW (Local)", "Date (Local)", "STD (Local)", "STA (Local)", "+1 (Local)",
+      "Type", "Cargo Op", "Block (hrs)", "Change Description", "Notes"];
 
     let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
 <head><meta charset="utf-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets>
 <x:ExcelWorksheet><x:Name>Schedule Changes</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet>
 </x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head><body>`;
 
-    html += `<table border="1" cellpadding="3" cellspacing="0" style="border-collapse: collapse;">`;
-    html += `<tr>${headers.map(h => `<th style="${hdrStyle}">${h}</th>`).join("")}</tr>`;
+    html += `<table cellpadding="3" cellspacing="0" style="border-collapse: collapse;">`;
+    html += `<tr><td colspan="${headers.length}" style="background: ${mscGold}; color: ${mscNavy}; font-size: 11pt; font-weight: bold; padding: 8px 12px; font-family: Calibri, sans-serif;">`;
+    html += `Schedule Changes — ${nameA} → ${nameB}${wn ? ` · Week ${wn}/${wy}` : ""}</td></tr>`;
+    html += `<tr>${headers.map(h => `<th style="${hdr}">${h}</th>`).join("")}</tr>`;
+
     filteredRows.forEach(r => {
       const f = r.b || r.a;
       const [orig, dest] = (f.route || "").split("-");
       const sta = f.dep + f.block;
-      const p1 = dayShiftUtc(f.dep, f.block);
+      const p1Z = dayShiftUtc(f.dep, f.block);
+      const origAp = lookupAirport ? lookupAirport(orig) : null;
+      const destAp = lookupAirport ? lookupAirport(dest) : null;
+      const origOff = origAp ? origAp.utcOffset : 0;
+      const destOff = destAp ? destAp.utcOffset : 0;
+      const stdLocalMins = f.dep + origOff * 60;
+      const staLocalMins = sta + destOff * 60;
+      let dowL = f.day;
+      if (stdLocalMins < 0) dowL = dowL === 1 ? 7 : dowL - 1;
+      if (stdLocalMins >= DAY_MINS) dowL = dowL === 7 ? 1 : dowL + 1;
+      const p1L = dayShiftLocal(f.dep, f.block, origOff, destOff);
+      const dateZ = wn && wy ? fmtDDMMYYYY(weekDayDate(wn, wy, f.day)) : "";
+      const dateL = wn && wy ? fmtDDMMYYYY(weekDayDate(wn, wy, dowL)) : "";
       const rc = rowColors[r.status] || "";
-      const cs = `${cellBase} ${rc}`;
+      const cs = `${cell} ${rc}`;
+      const csL = `${cellL} ${rc}`;
+
       html += `<tr>`;
       html += `<td style="${cs}">${r.status.toUpperCase()}</td>`;
-      html += `<td style="${cs}">${f.flightNum || ""}</td>`;
+      html += `<td style="${csL}">${f.flightNum || ""}</td>`;
       html += `<td style="${cs}">${f.tail || ""}</td>`;
       html += `<td style="${cs}">${orig || ""}</td>`;
       html += `<td style="${cs}">${dest || ""}</td>`;
-      html += `<td style="${cs} text-align: center;">${dayNames[(f.day - 1) % 7]}</td>`;
+      html += `<td style="${cs}">${f.day}</td>`;
+      html += `<td style="${cs}">${dateZ}</td>`;
       html += `<td style="${cs}">${toHHMM(f.dep)}</td>`;
       html += `<td style="${cs}">${toHHMM(sta)}</td>`;
-      html += `<td style="${cs} text-align: center;">${p1 > 0 ? `+${p1}` : ""}</td>`;
-      html += `<td style="${cs}">${r.changes.join("; ") || "No change"}</td>`;
-      html += `<td style="${cs}"></td>`;
+      html += `<td style="${cs}">${p1Z > 0 ? `+${p1Z}` : p1Z < 0 ? `${p1Z}` : ""}</td>`;
+      html += `<td style="${cs}">${dowL}</td>`;
+      html += `<td style="${cs}">${dateL}</td>`;
+      html += `<td style="${cs}">${toHHMM(stdLocalMins)}</td>`;
+      html += `<td style="${cs}">${toHHMM(staLocalMins)}</td>`;
+      html += `<td style="${cs}">${p1L > 0 ? `+${p1L}` : p1L < 0 ? `${p1L}` : ""}</td>`;
+      html += `<td style="${cs}">${f.type || ""}</td>`;
+      html += `<td style="${cs}">${f.cargoOp || ""}</td>`;
+      html += `<td style="${cs}">${+(f.block / 60).toFixed(2)}</td>`;
+      html += `<td style="${csL}">${r.changes.join("; ") || "No change"}</td>`;
+      html += `<td style="${csL}"></td>`;
       html += `</tr>`;
     });
     html += `</table></body></html>`;
