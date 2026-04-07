@@ -10040,12 +10040,12 @@ function ScheduleTableTab() {
       html += `<td style="${cell} ${rowBg}">${dateZ}</td>`;
       html += `<td style="${cell} ${rowBg}">${stdZ}</td>`;
       html += `<td style="${cell} ${rowBg}">${staZ}</td>`;
-      html += `<td style="${cell} ${rowBg}">${p1Z > 0 ? `+${p1Z}` : ""}</td>`;
+      html += `<td style="${cell} ${rowBg}">${p1Z > 0 ? `+${p1Z}` : p1Z < 0 ? `${p1Z}` : ""}</td>`;
       html += `<td style="${cell} ${rowBg}">${dowL}</td>`;
       html += `<td style="${cell} ${rowBg}">${dateL}</td>`;
       html += `<td style="${cell} ${rowBg}">${stdL}</td>`;
       html += `<td style="${cell} ${rowBg}">${staL}</td>`;
-      html += `<td style="${cell} ${rowBg}">${p1L > 0 ? `+${p1L}` : ""}</td>`;
+      html += `<td style="${cell} ${rowBg}">${p1L > 0 ? `+${p1L}` : p1L < 0 ? `${p1L}` : ""}</td>`;
       html += `<td style="${cell} ${rowBg}">${f.type || ""}</td>`;
       html += `<td style="${cell} ${rowBg}">${f.cargoOp || ""}</td>`;
       html += `<td style="${cell} ${rowBg}">${+(f.block / 60).toFixed(2)}</td>`;
