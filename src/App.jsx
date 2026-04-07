@@ -87,6 +87,45 @@ function authLoadSession() {
   } catch { return null; }
 }
 
+async function authChangePassword(newPassword) {
+  const token = await getAuthToken();
+  if (!token) throw new Error("Not authenticated");
+  const res = await fetch(`${AUTH_BASE}/accounts:update?key=${FIREBASE.apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ idToken: token, password: newPassword, returnSecureToken: true }),
+  });
+  if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err?.error?.message || "Failed to change password"); }
+  const data = await res.json();
+  _authToken = data.idToken;
+  _authRefreshToken = data.refreshToken;
+  _authTokenExpiry = Date.now() + (parseInt(data.expiresIn) || 3600) * 1000 - 60000;
+  try { sessionStorage.setItem("msc_auth", JSON.stringify({ token: _authToken, refreshToken: _authRefreshToken, expiry: _authTokenExpiry, user: _authUser })); } catch {}
+}
+
+async function authSendPasswordReset(email) {
+  const res = await fetch(`${AUTH_BASE}/accounts:sendOobCode?key=${FIREBASE.apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ requestType: "PASSWORD_RESET", email }),
+  });
+  if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err?.error?.message || "Failed to send reset email"); }
+}
+
+async function authCreateUser(email, password) {
+  const res = await fetch(`${AUTH_BASE}/accounts:signUp?key=${FIREBASE.apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password, returnSecureToken: false }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const msg = err?.error?.message || "Failed to create user";
+    throw new Error(msg === "EMAIL_EXISTS" ? "This email is already registered" : msg === "WEAK_PASSWORD" ? "Password must be at least 6 characters" : msg);
+  }
+  return await res.json();
+}
+
 // ── localStorage encryption (used by offline mode) ──────────────────────────
 const ENCRYPT_LOCAL = typeof window !== "undefined" && window.crypto?.subtle;
 let _encKeyPromise = null;
@@ -13588,6 +13627,8 @@ function AppShell({ authEmail, onSignOut }) {
   } = useSchedule();
 
   const [scenarioMsg, setScenarioMsg] = useState(null);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [accountModal, setAccountModal] = useState(null); // null | "password" | "addUser"
   const [acModal, setAcModal]         = useState(false);
   const [newAcReg, setNewAcReg]       = useState("");
   const [newAcPayload, setNewAcPayload] = useState(105000);
@@ -13656,6 +13697,14 @@ function AppShell({ authEmail, onSignOut }) {
     const t = setTimeout(() => document.addEventListener("click", handler), 0);
     return () => { clearTimeout(t); document.removeEventListener("click", handler); };
   }, [exportOpen]);
+
+  // Close user menu on outside click
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const handler = () => setUserMenuOpen(false);
+    const t = setTimeout(() => document.addEventListener("click", handler), 0);
+    return () => { clearTimeout(t); document.removeEventListener("click", handler); };
+  }, [userMenuOpen]);
 
   // ── Keyboard shortcuts ──────────────────────────────────────────────
   // Ctrl+1..0 = switch tabs, Escape = close export dropdown
@@ -14373,18 +14422,49 @@ function AppShell({ authEmail, onSignOut }) {
           {darkMode ? "☀︎" : "☾"}
         </button>
 
-        {/* Auth: user email + sign out */}
-        {REQUIRE_AUTH && authEmail && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8, flexShrink: 0 }}>
-            <span style={{ fontSize: 9, color: darkMode ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.35)", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{authEmail}</span>
-            <button onClick={onSignOut} style={{
-              background: darkMode ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)",
-              border: "none", borderRadius: 4, padding: "3px 8px", cursor: "pointer",
-              fontSize: 9, fontFamily: FONT, fontWeight: 600,
-              color: darkMode ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.4)",
-            }}>Sign Out</button>
-          </div>
-        )}
+        {/* Auth: user menu */}
+        {REQUIRE_AUTH && authEmail && (() => {
+          const [userMenu, setUserMenu] = [userMenuOpen, setUserMenuOpen];
+          return (
+            <div style={{ position: "relative", marginLeft: 8, flexShrink: 0 }}>
+              <button onClick={() => setUserMenu(v => !v)} style={{
+                background: darkMode ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)",
+                border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer",
+                fontSize: 9, fontFamily: FONT, fontWeight: 600,
+                color: darkMode ? "rgba(255,255,255,0.6)" : "rgba(0,0,0,0.5)",
+                display: "flex", alignItems: "center", gap: 4,
+              }}>
+                <span style={{ maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{authEmail}</span>
+                <span style={{ fontSize: 7 }}>▼</span>
+              </button>
+              {userMenu && (
+                <div style={{
+                  position: "absolute", top: "100%", right: 0, marginTop: 4, zIndex: 9999,
+                  background: C.white, border: `1px solid ${C.brownLight}`, borderRadius: 8,
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.15)", minWidth: 200, padding: "6px 0",
+                  fontFamily: FONT,
+                }}>
+                  <div style={{ padding: "8px 14px", fontSize: 11, color: C.brownDark, fontWeight: 700, borderBottom: `1px solid ${C.offWhite2}` }}>
+                    {authEmail}
+                  </div>
+                  <button onClick={() => { setUserMenu(false); setAccountModal("password"); }} style={{
+                    width: "100%", textAlign: "left", background: "none", border: "none", padding: "8px 14px",
+                    fontSize: 11, color: C.text, cursor: "pointer", fontFamily: FONT,
+                  }}>Change Password</button>
+                  <button onClick={() => { setUserMenu(false); setAccountModal("addUser"); }} style={{
+                    width: "100%", textAlign: "left", background: "none", border: "none", padding: "8px 14px",
+                    fontSize: 11, color: C.text, cursor: "pointer", fontFamily: FONT,
+                  }}>Add User</button>
+                  <div style={{ height: 1, background: C.offWhite2, margin: "4px 0" }} />
+                  <button onClick={() => { setUserMenu(false); onSignOut(); }} style={{
+                    width: "100%", textAlign: "left", background: "none", border: "none", padding: "8px 14px",
+                    fontSize: 11, color: C.danger, cursor: "pointer", fontFamily: FONT, fontWeight: 600,
+                  }}>Sign Out</button>
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* ── Scenario bar ────────────────────────────────────────────── */}
@@ -15343,6 +15423,89 @@ function AppShell({ authEmail, onSignOut }) {
 
         </Modal>
       )}
+      {/* ── Account modals (change password, add user) ────────── */}
+      {accountModal === "password" && (
+        <Modal title="Change Password" onClose={() => setAccountModal(null)} width={380}>
+          {(() => {
+            const [newPw, setNewPw] = useState("");
+            const [confirmPw, setConfirmPw] = useState("");
+            const [pwError, setPwError] = useState("");
+            const [pwMsg, setPwMsg] = useState("");
+            const [pwLoading, setPwLoading] = useState(false);
+            return (
+              <>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 4 }}>New Password</label>
+                  <input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Min 6 characters"
+                    style={{ ...iStyle, width: "100%", boxSizing: "border-box" }} autoFocus />
+                </div>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 4 }}>Confirm Password</label>
+                  <input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} placeholder="Repeat password"
+                    style={{ ...iStyle, width: "100%", boxSizing: "border-box" }} />
+                </div>
+                {pwError && <div style={{ marginBottom: 10, padding: "6px 10px", borderRadius: 5, background: C.dangerLight, color: C.danger, fontSize: 11 }}>{pwError}</div>}
+                {pwMsg && <div style={{ marginBottom: 10, padding: "6px 10px", borderRadius: 5, background: C.successLight, color: C.success, fontSize: 11 }}>{pwMsg}</div>}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <PrimaryBtn onClick={async () => {
+                    setPwError(""); setPwMsg("");
+                    if (newPw.length < 6) { setPwError("Password must be at least 6 characters"); return; }
+                    if (newPw !== confirmPw) { setPwError("Passwords do not match"); return; }
+                    setPwLoading(true);
+                    try { await authChangePassword(newPw); setPwMsg("Password changed successfully"); setNewPw(""); setConfirmPw(""); }
+                    catch (err) { setPwError(err.message || "Failed to change password"); }
+                    finally { setPwLoading(false); }
+                  }} disabled={pwLoading}>{pwLoading ? "Changing…" : "Change Password"}</PrimaryBtn>
+                  <SecondaryBtn onClick={() => setAccountModal(null)}>Cancel</SecondaryBtn>
+                </div>
+              </>
+            );
+          })()}
+        </Modal>
+      )}
+      {accountModal === "addUser" && (
+        <Modal title="Add User" onClose={() => setAccountModal(null)} width={380}>
+          {(() => {
+            const [newEmail, setNewEmail] = useState("");
+            const [newUserPw, setNewUserPw] = useState("");
+            const [auError, setAuError] = useState("");
+            const [auMsg, setAuMsg] = useState("");
+            const [auLoading, setAuLoading] = useState(false);
+            return (
+              <>
+                <div style={{ fontSize: 11, color: C.textSoft, marginBottom: 12 }}>
+                  Create a new account for a team member. They can change their password after signing in.
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 4 }}>Email</label>
+                  <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="colleague@msc.com"
+                    style={{ ...iStyle, width: "100%", boxSizing: "border-box" }} autoFocus />
+                </div>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 4 }}>Temporary Password</label>
+                  <input type="text" value={newUserPw} onChange={e => setNewUserPw(e.target.value)} placeholder="Min 6 characters"
+                    style={{ ...iStyle, width: "100%", boxSizing: "border-box" }} />
+                </div>
+                {auError && <div style={{ marginBottom: 10, padding: "6px 10px", borderRadius: 5, background: C.dangerLight, color: C.danger, fontSize: 11 }}>{auError}</div>}
+                {auMsg && <div style={{ marginBottom: 10, padding: "6px 10px", borderRadius: 5, background: C.successLight, color: C.success, fontSize: 11 }}>{auMsg}</div>}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <PrimaryBtn onClick={async () => {
+                    setAuError(""); setAuMsg("");
+                    if (!newEmail || !newEmail.includes("@")) { setAuError("Please enter a valid email"); return; }
+                    if (newUserPw.length < 6) { setAuError("Password must be at least 6 characters"); return; }
+                    setAuLoading(true);
+                    try { await authCreateUser(newEmail.trim(), newUserPw); setAuMsg(`Account created for ${newEmail}`); setNewEmail(""); setNewUserPw(""); }
+                    catch (err) { setAuError(err.message || "Failed to create user"); }
+                    finally { setAuLoading(false); }
+                  }} disabled={auLoading}>{auLoading ? "Creating…" : "Create Account"}</PrimaryBtn>
+                  <SecondaryBtn onClick={() => setAccountModal(null)}>Cancel</SecondaryBtn>
+                </div>
+              </>
+            );
+          })()}
+        </Modal>
+      )}
+
       {/* ── Easter egg: 777s fly across screen ──────────────────── */}
       {flyoverActive && (
         <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 9999, overflow: "hidden" }}>
@@ -15377,20 +15540,29 @@ function LoginScreen({ onLogin }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState("login"); // login | forgot
   const [dark, setDark] = useState(() => { try { return window.__msc_dark === true; } catch { return false; } });
   const P = dark ? C_DARK : C_LIGHT;
+  const iS = { width: "100%", padding: "10px 12px", fontSize: 13, fontFamily: FONT, borderRadius: 8, border: `1.5px solid ${P.brownLight}`, background: P.bg, color: P.text, outline: "none", boxSizing: "border-box" };
 
   async function handleSubmit(e) {
     e.preventDefault();
+    setError(""); setMsg("");
+    if (mode === "forgot") {
+      if (!email) { setError("Please enter your email"); return; }
+      setLoading(true);
+      try { await authSendPasswordReset(email.trim()); setMsg("Password reset email sent. Check your inbox."); }
+      catch (err) { setError(err.message || "Failed to send reset email"); }
+      finally { setLoading(false); }
+      return;
+    }
     if (!email || !password) { setError("Please enter email and password"); return; }
-    setError(""); setLoading(true);
-    try {
-      const user = await authSignIn(email.trim(), password);
-      onLogin(user);
-    } catch (err) {
-      setError(err.message || "Sign in failed");
-    } finally { setLoading(false); }
+    setLoading(true);
+    try { onLogin(await authSignIn(email.trim(), password)); }
+    catch (err) { setError(err.message || "Sign in failed"); }
+    finally { setLoading(false); }
   }
 
   return (
@@ -15399,36 +15571,33 @@ function LoginScreen({ onLogin }) {
         <div style={{ textAlign: "center", marginBottom: 28 }}>
           <img src={dark ? MSC_LOGO_DARK : MSC_LOGO} alt="MSC Air Cargo" style={{ height: 36, marginBottom: 12 }} />
           <div style={{ fontSize: 14, fontWeight: 700, color: P.brownDark, letterSpacing: -0.3 }}>Schedule Simulator</div>
-          <div style={{ fontSize: 10, color: P.textMuted, marginTop: 4 }}>Sign in to continue</div>
+          <div style={{ fontSize: 10, color: P.textMuted, marginTop: 4 }}>{mode === "forgot" ? "Reset your password" : "Sign in to continue"}</div>
         </div>
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 12 }}>
             <label style={{ fontSize: 10, fontWeight: 600, color: P.textMuted, display: "block", marginBottom: 4 }}>Email</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-              placeholder="you@msc.com" autoFocus
-              style={{ width: "100%", padding: "10px 12px", fontSize: 13, fontFamily: FONT, borderRadius: 8, border: `1.5px solid ${P.brownLight}`, background: P.bg, color: P.text, outline: "none", boxSizing: "border-box" }} />
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@msc.com" autoFocus style={iS} />
           </div>
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 10, fontWeight: 600, color: P.textMuted, display: "block", marginBottom: 4 }}>Password</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-              placeholder="••••••••"
-              style={{ width: "100%", padding: "10px 12px", fontSize: 13, fontFamily: FONT, borderRadius: 8, border: `1.5px solid ${P.brownLight}`, background: P.bg, color: P.text, outline: "none", boxSizing: "border-box" }} />
-          </div>
-          {error && (
-            <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 6, background: P.dangerLight, color: P.danger, fontSize: 11, fontWeight: 600 }}>{error}</div>
+          {mode === "login" && (
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 10, fontWeight: 600, color: P.textMuted, display: "block", marginBottom: 4 }}>Password</label>
+              <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" style={iS} />
+            </div>
           )}
+          {error && <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 6, background: P.dangerLight, color: P.danger, fontSize: 11, fontWeight: 600 }}>{error}</div>}
+          {msg && <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 6, background: P.successLight, color: P.success, fontSize: 11, fontWeight: 600 }}>{msg}</div>}
           <button type="submit" disabled={loading}
-            style={{
-              width: "100%", padding: "11px", fontSize: 13, fontWeight: 700, fontFamily: FONT,
-              background: loading ? P.brownLight : "#EED484", color: "#222221",
-              border: "none", borderRadius: 8, cursor: loading ? "default" : "pointer",
-            }}>
-            {loading ? "Signing in…" : "Sign In"}
+            style={{ width: "100%", padding: "11px", fontSize: 13, fontWeight: 700, fontFamily: FONT, background: loading ? P.brownLight : "#EED484", color: "#222221", border: "none", borderRadius: 8, cursor: loading ? "default" : "pointer" }}>
+            {loading ? "Please wait…" : mode === "forgot" ? "Send Reset Link" : "Sign In"}
           </button>
         </form>
-        <div style={{ textAlign: "center", marginTop: 16 }}>
+        <div style={{ textAlign: "center", marginTop: 12, display: "flex", justifyContent: "center", gap: 16 }}>
+          <button onClick={() => { setMode(mode === "forgot" ? "login" : "forgot"); setError(""); setMsg(""); }}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 10, color: P.textSoft, fontFamily: FONT }}>
+            {mode === "forgot" ? "Back to Sign In" : "Forgot password?"}
+          </button>
           <button onClick={() => { setDark(d => !d); window.__msc_dark = !dark; }}
-            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: P.textMuted }}>
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 10, color: P.textMuted, fontFamily: FONT }}>
             {dark ? "☀︎ Light" : "☾ Dark"}
           </button>
         </div>
