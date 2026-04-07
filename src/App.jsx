@@ -4072,6 +4072,41 @@ function sanitiseText(text, maxLen = 200) {
 }
 
 function genAircraftId()  { return "ac" + Date.now(); }
+
+/** Get the Monday date for a given ISO week number and year.
+ *  ISO 8601: Week 1 is the week containing the first Thursday of the year. */
+function isoWeekToDate(week, year) {
+  // Jan 4 is always in week 1
+  const jan4 = new Date(year, 0, 4);
+  const dayOfWeek = jan4.getDay() || 7; // Mon=1..Sun=7
+  const mon1 = new Date(jan4);
+  mon1.setDate(jan4.getDate() - dayOfWeek + 1); // Monday of week 1
+  const target = new Date(mon1);
+  target.setDate(mon1.getDate() + (week - 1) * 7);
+  return target;
+}
+
+/** Format a Date as "DD MMM" (e.g. "05 May") */
+function fmtDDMMM(date) {
+  if (!date || isNaN(date.getTime())) return "";
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${String(date.getDate()).padStart(2, "0")} ${months[date.getMonth()]}`;
+}
+
+/** Format a Date as "YYYY-MM-DD" */
+function fmtISO(date) {
+  if (!date || isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+/** Get the date for a specific day (1=Mon..7=Sun) in a given ISO week */
+function weekDayDate(week, year, day) {
+  if (!week || !year) return null;
+  const mon = isoWeekToDate(week, year);
+  const d = new Date(mon);
+  d.setDate(mon.getDate() + (day - 1));
+  return d;
+}
 function genMxBlockId()   { return "mx" + Date.now() + Math.random().toString(36).slice(2, 6); }
 
 /** After loading a scenario, advance all ID counters past existing IDs to prevent collisions */
@@ -7243,10 +7278,11 @@ function GanttTab() {
       // Day header bg (matches on-screen: offWhite2 / yellowMid)
       ctx.fillStyle = isWknd ? C.yellowMid : C.offWhite2;
       ctx.fillRect(dx, 0, DAY_W, EX_DAY_H);
-      // Day name
+      // Day name + date
       ctx.fillStyle = isWknd ? C.yellowHeavy : C.brownDark;
       ctx.font = "bold 16px Archivo, Arial, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText(DAY_NAMES[d - 1], dx + DAY_W / 2, EX_DAY_H / 2);
+      const dayDate = ui?.weekNum && ui?.weekYear ? weekDayDate(ui.weekNum, ui.weekYear, d) : null;
+      ctx.fillText(DAY_NAMES[d - 1] + (dayDate ? ` ${fmtDDMMM(dayDate)}` : ""), dx + DAY_W / 2, EX_DAY_H / 2);
       // Day separator
       if (d > 1) {
         ctx.strokeStyle = C.brownLight; ctx.lineWidth = isWknd ? 3 : 1;
@@ -7529,6 +7565,23 @@ function GanttTab() {
           })()}
         </div>
 
+        {/* Week / Year selector */}
+        <div style={{ width: 1, height: 16, background: C.brownLight }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ fontSize: 9, fontWeight: 600, color: C.textMuted }}>W</span>
+          <input type="number" min={1} max={53} value={ui?.weekNum || ""}
+            onChange={e => { const v = parseInt(e.target.value); if (v >= 1 && v <= 53 && ui?.setWeekNum) ui.setWeekNum(v); }}
+            style={{ width: 36, padding: "3px 4px", fontSize: 10, fontFamily: MONO, textAlign: "center", border: `1px solid ${C.brownLight}`, borderRadius: 4, color: C.text, background: C.bg, outline: "none" }} />
+          <input type="number" min={2020} max={2035} value={ui?.weekYear || ""}
+            onChange={e => { const v = parseInt(e.target.value); if (v >= 2020 && v <= 2035 && ui?.setWeekYear) ui.setWeekYear(v); }}
+            style={{ width: 48, padding: "3px 4px", fontSize: 10, fontFamily: MONO, textAlign: "center", border: `1px solid ${C.brownLight}`, borderRadius: 4, color: C.text, background: C.bg, outline: "none" }} />
+          {ui?.weekNum && ui?.weekYear && (() => {
+            const mon = weekDayDate(ui.weekNum, ui.weekYear, 1);
+            const sun = weekDayDate(ui.weekNum, ui.weekYear, 7);
+            return <span style={{ fontSize: 8, color: C.textMuted }}>{fmtDDMMM(mon)}–{fmtDDMMM(sun)}</span>;
+          })()}
+        </div>
+
         <div style={{ display: "flex", gap: 8, marginLeft: "auto", alignItems: "center" }}>
 
           {/* Zoom controls */}
@@ -7697,11 +7750,18 @@ function GanttTab() {
                 <g key={d}>
                   <rect x={x} y={0} width={dayW} height={DAY_HDR_H}
                     fill={isWknd ? C.yellowMid : C.offWhite2} />
-                  <text x={x + dayW / 2} y={DAY_HDR_H / 2 + 5}
+                  <text x={x + dayW / 2} y={ui?.weekNum ? DAY_HDR_H / 2 + 1 : DAY_HDR_H / 2 + 5}
                     fill={isWknd ? C.yellowHeavy : C.brownDark}
                     fontSize={11} fontFamily={FONT} fontWeight="700" textAnchor="middle">
                     {DAY_NAMES[d - 1]}
                   </text>
+                  {ui?.weekNum && ui?.weekYear && (
+                    <text x={x + dayW / 2} y={DAY_HDR_H / 2 + 12}
+                      fill={isWknd ? C.yellowHeavy : C.textMuted}
+                      fontSize={8} fontFamily={MONO} fontWeight="500" textAnchor="middle" opacity="0.8">
+                      {fmtDDMMM(weekDayDate(ui.weekNum, ui.weekYear, d))}
+                    </text>
+                  )}
                   <line x1={x} y1={0} x2={x} y2={svgH - 24}
                     stroke={C.brownLight} strokeWidth={d === 1 ? 0 : 1}
                     opacity={isWknd ? 1 : 0.4} />
@@ -9910,9 +9970,10 @@ function ScheduleTableTab() {
     const rotMap = {};
     (rotations || []).forEach(r => { rotMap[r.id] = r; });
 
+    const wn = ui?.weekNum, wy = ui?.weekYear;
     const header = ["Flight No", "Tail", "Origin", "Dest", "Type", "Cargo Op", "Block (hrs)",
-      "DOW (Zulu)", "STD (Zulu)", "STA (Zulu)", "+1 (Zulu)",
-      "DOW (Local)", "STD (Local)", "STA (Local)", "+1 (Local)",
+      "DOW (Zulu)", "Date (Zulu)", "STD (Zulu)", "STA (Zulu)", "+1 (Zulu)",
+      "DOW (Local)", "Date (Local)", "STD (Local)", "STA (Local)", "+1 (Local)",
       "Customer", "Rotation", "Locked"];
 
     const allFlights = flights
@@ -9947,11 +10008,14 @@ function ScheduleTableTab() {
       if (stdLocalMins < 0) dowL = dowL === 1 ? 7 : dowL - 1;
       if (stdLocalMins >= DAY_MINS) dowL = dowL === 7 ? 1 : dowL + 1;
       const p1L = dayShiftLocal(f.dep, f.block, f.origOff, f.destOff) || "";
+      const dateZ = wn && wy ? fmtISO(weekDayDate(wn, wy, f.day)) : "";
+      const dateLDay = wn && wy ? weekDayDate(wn, wy, dowL) : null;
+      const dateL = dateLDay ? fmtISO(dateLDay) : "";
       return [
         f.flightNum || "", f.ac?.reg || "", f.orig, f.dest, f.type || "",
         f.cargoOp || "none",
         +(f.block / 60).toFixed(2),
-        f.day, stdZ, staZ, p1Z, dowL, stdL, staL, p1L,
+        f.day, dateZ, stdZ, staZ, p1Z, dowL, dateL, stdL, staL, p1L,
         f.customer || "", f.rot?.name || "", f.rot?.locked ? "Y" : "",
       ];
     });
@@ -9959,8 +10023,8 @@ function ScheduleTableTab() {
     const ws = XLSX.utils.aoa_to_sheet([header, ...dataRows]);
     ws["!cols"] = [
       { wch: 12 }, { wch: 10 }, { wch: 6 }, { wch: 6 }, { wch: 6 }, { wch: 10 }, { wch: 10 },
-      { wch: 5 }, { wch: 10 }, { wch: 10 }, { wch: 5 },
-      { wch: 5 }, { wch: 10 }, { wch: 10 }, { wch: 5 },
+      { wch: 5 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 5 },
+      { wch: 5 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 5 },
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Schedule");
@@ -13629,6 +13693,15 @@ function AppShell({ authEmail, onSignOut }) {
   const [scenarioMsg, setScenarioMsg] = useState(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [accountModal, setAccountModal] = useState(null); // null | "password" | "addUser"
+  const [weekNum, setWeekNum]   = useState(() => {
+    // Default to current ISO week
+    const now = new Date();
+    const jan4 = new Date(now.getFullYear(), 0, 4);
+    const d = jan4.getDay() || 7;
+    const mon1 = new Date(jan4); mon1.setDate(jan4.getDate() - d + 1);
+    return Math.ceil(((now - mon1) / 86400000 + 1) / 7);
+  });
+  const [weekYear, setWeekYear] = useState(2026);
   const [acModal, setAcModal]         = useState(false);
   const [newAcReg, setNewAcReg]       = useState("");
   const [newAcPayload, setNewAcPayload] = useState(105000);
@@ -14320,7 +14393,8 @@ function AppShell({ authEmail, onSignOut }) {
     ganttScrollRef,
     exportRouteTable,
     exportAirports,
-  }), [aircraft, blockTable, airports, scenarioName]);
+    weekNum, weekYear, setWeekNum, setWeekYear,
+  }), [aircraft, blockTable, airports, scenarioName, weekNum, weekYear]);
 
   return (
     <UIContext.Provider value={uiCtx}>
