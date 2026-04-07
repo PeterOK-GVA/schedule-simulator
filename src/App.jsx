@@ -12,9 +12,86 @@ const FIREBASE = {
 };
 const FS_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE.projectId}/databases/(default)/documents`;
 
+// ── Authentication (Firebase Auth REST API) ─────────────────────────────────
+const AUTH_BASE = "https://identitytoolkit.googleapis.com/v1";
+const REQUIRE_AUTH = !["localhost", "127.0.0.1", ""].includes(window.location.hostname);
+
+let _authToken = null;
+let _authRefreshToken = null;
+let _authTokenExpiry = 0;
+let _authUser = null;
+let _authRefreshPromise = null;
+
+async function authSignIn(email, password) {
+  const res = await fetch(`${AUTH_BASE}/accounts:signInWithPassword?key=${FIREBASE.apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password, returnSecureToken: true }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const msg = err?.error?.message || "Authentication failed";
+    throw new Error(msg === "EMAIL_NOT_FOUND" ? "Email not found" : msg === "INVALID_PASSWORD" ? "Incorrect password" : msg === "INVALID_LOGIN_CREDENTIALS" ? "Invalid email or password" : msg);
+  }
+  const data = await res.json();
+  _authToken = data.idToken;
+  _authRefreshToken = data.refreshToken;
+  _authTokenExpiry = Date.now() + (parseInt(data.expiresIn) || 3600) * 1000 - 60000;
+  _authUser = { email: data.email, localId: data.localId };
+  try { sessionStorage.setItem("msc_auth", JSON.stringify({ token: _authToken, refreshToken: _authRefreshToken, expiry: _authTokenExpiry, user: _authUser })); } catch {}
+  return _authUser;
+}
+
+async function authRefresh() {
+  if (!_authRefreshToken) return null;
+  if (_authRefreshPromise) return _authRefreshPromise;
+  _authRefreshPromise = (async () => {
+    try {
+      const res = await fetch(`https://securetoken.googleapis.com/v1/token?key=${FIREBASE.apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ grant_type: "refresh_token", refresh_token: _authRefreshToken }),
+      });
+      if (!res.ok) { authSignOut(); return null; }
+      const data = await res.json();
+      _authToken = data.id_token;
+      _authRefreshToken = data.refresh_token;
+      _authTokenExpiry = Date.now() + (parseInt(data.expires_in) || 3600) * 1000 - 60000;
+      try { sessionStorage.setItem("msc_auth", JSON.stringify({ token: _authToken, refreshToken: _authRefreshToken, expiry: _authTokenExpiry, user: _authUser })); } catch {}
+      return _authToken;
+    } catch { authSignOut(); return null; }
+    finally { _authRefreshPromise = null; }
+  })();
+  return _authRefreshPromise;
+}
+
+async function getAuthToken() {
+  if (!REQUIRE_AUTH) return null;
+  if (_authToken && Date.now() < _authTokenExpiry) return _authToken;
+  return authRefresh();
+}
+
+function authSignOut() {
+  _authToken = null; _authRefreshToken = null; _authTokenExpiry = 0; _authUser = null;
+  try { sessionStorage.removeItem("msc_auth"); } catch {}
+}
+
+function authLoadSession() {
+  try {
+    const raw = sessionStorage.getItem("msc_auth");
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    if (!s.token || !s.refreshToken || !s.user) return null;
+    _authToken = s.token; _authRefreshToken = s.refreshToken; _authTokenExpiry = s.expiry || 0; _authUser = s.user;
+    return _authUser;
+  } catch { return null; }
+}
+
 async function fsGet(collection, docId) {
   try {
-    const res = await fetch(`${FS_BASE}/${collection}/${docId}?key=${FIREBASE.apiKey}`);
+    const token = await getAuthToken();
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    const res = await fetch(`${FS_BASE}/${collection}/${docId}?key=${FIREBASE.apiKey}`, { headers });
     if (res.status === 404) return null;
     if (!res.ok) return null;
     const doc = await res.json();
@@ -25,9 +102,12 @@ async function fsGet(collection, docId) {
 
 async function fsSet(collection, docId, data) {
   try {
+    const token = await getAuthToken();
+    const hdrs = { "Content-Type": "application/json" };
+    if (token) hdrs.Authorization = `Bearer ${token}`;
     const res = await fetch(`${FS_BASE}/${collection}/${docId}?key=${FIREBASE.apiKey}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: hdrs,
       body: JSON.stringify({
         fields: {
           data: { stringValue: JSON.stringify(data) },
@@ -41,7 +121,9 @@ async function fsSet(collection, docId, data) {
 
 async function fsList(collection) {
   try {
-    const res = await fetch(`${FS_BASE}/${collection}?key=${FIREBASE.apiKey}&pageSize=100`);
+    const token = await getAuthToken();
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    const res = await fetch(`${FS_BASE}/${collection}?key=${FIREBASE.apiKey}&pageSize=100`, { headers });
     if (!res.ok) return [];
     const body = await res.json();
     return (body.documents || []).map(doc => {
@@ -55,13 +137,18 @@ async function fsList(collection) {
 
 async function fsDelete(collection, docId) {
   try {
-    const res = await fetch(`${FS_BASE}/${collection}/${docId}?key=${FIREBASE.apiKey}`, { method: "DELETE" });
+    const token = await getAuthToken();
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    const res = await fetch(`${FS_BASE}/${collection}/${docId}?key=${FIREBASE.apiKey}`, { method: "DELETE", headers });
     return res.ok;
   } catch { return false; }
 }
 
 async function fsCreate(collection, data) {
   try {
+    const token = await getAuthToken();
+    const hdrs = { "Content-Type": "application/json" };
+    if (token) hdrs.Authorization = `Bearer ${token}`;
     const body = JSON.stringify({
       fields: {
         data: { stringValue: JSON.stringify(data) },
@@ -70,7 +157,7 @@ async function fsCreate(collection, data) {
     });
     const res = await fetch(`${FS_BASE}/${collection}?key=${FIREBASE.apiKey}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: hdrs,
       body,
     });
     if (!res.ok) {
@@ -253,7 +340,9 @@ const MX_STYLE_DARK  = { bg: "#2D1520", stroke: "#C4607A", hatch: "#C4607A", hat
 function MX_STYLE() { return C === C_DARK ? MX_STYLE_DARK : MX_STYLE_LIGHT; }
 
 // ── Cargo ground-time constants ──────────────────────────────────────────────
-const CARGO_MIN_TURN       = 180; // 3 h for any cargo turn (offload, upload, or both at station)
+const CARGO_FULL_TURN      = 180; // 3 h for full cargo turn (offload + upload at same station)
+const CARGO_PARTIAL_TURN   = 120; // 2 h for one-sided cargo op (offload-only or upload-only)
+const CARGO_PLAN_TURN      = 180; // 3 h default for planning (double-click push, add-flights spacing)
 
 // ── Maintenance base configuration ──────────────────────────────────────────
 // Tier A = full heavy maintenance (C-check capable)
@@ -3997,26 +4086,22 @@ function localTime(utcMins, utcOffset) {
   return ((utcMins + utcOffset * 60) % DAY_MINS + DAY_MINS) % DAY_MINS;
 }
 
-/** Minimum turnaround based on cargo ops at the station between two flights
- *  - 3h cargo turn: any cargo handling at the station (offload, upload, or both)
- *  - 1.5h tech stop: no cargo handling (ferry-to-ferry, or mid-rotation tech stops
- *    e.g. upload → [none → none] → offload — the middle turns are all tech stops) */
+/** Minimum turnaround for violation detection (Gantt highlights, warnings)
+ *  - 3h full cargo turn: offload + upload at same station
+ *  - 2h partial cargo turn: offload-only or upload-only at station
+ *  - 1.5h tech stop: no cargo handling */
 function getMinTurnFromPair(arrivingFlight, departingFlight) {
   const aType = arrivingFlight?.type  || "F";
   const dType = departingFlight?.type || "F";
 
-  // Ferry and maintenance flights have no cargo regardless of cargoOp field
   const aNoCargo = aType === "P" || aType === "M";
   const dNoCargo = dType === "P" || dType === "M";
 
-  // At this station: does cargo come OFF the arriving aircraft?
   const offloading = !aNoCargo && (arrivingFlight?.cargoOp === "offload" || arrivingFlight?.cargoOp === "both");
-  // At this station: does cargo go ON for the departing flight?
   const uplifting  = !dNoCargo && (departingFlight?.cargoOp === "upload"  || departingFlight?.cargoOp === "both");
 
-  // Any cargo handling at this station → 3h cargo turn
-  if (offloading || uplifting) return { mins: CARGO_MIN_TURN, label: "cargo turn" };
-  // Neither: tech stop / ferry-to-ferry (1.5h)
+  if (offloading && uplifting) return { mins: CARGO_FULL_TURN, label: "full cargo turn" };
+  if (offloading || uplifting) return { mins: CARGO_PARTIAL_TURN, label: "partial cargo turn" };
   return { mins: MIN_TURN, label: "tech stop" };
 }
 
@@ -7709,7 +7794,7 @@ function GanttTab() {
                           // Push departing flight: tech stops use minTurn (90m), all others default to 3h
                           const depFlight = t.departingFlight;
                           const arrMins = t.arrWMins; // arrival in week-minutes
-                          const pushMins = t.turnLabel === "tech stop" ? t.minTurn : CARGO_MIN_TURN;
+                          const pushMins = t.turnLabel === "tech stop" ? t.minTurn : CARGO_PLAN_TURN;
                           let newDepWM = Math.ceil((arrMins + pushMins) / SNAP) * SNAP;
                           // Wrap around the week boundary (Sunday → Monday)
                           if (newDepWM >= WEEK_MINS) newDepWM -= WEEK_MINS;
@@ -13423,7 +13508,7 @@ function RotationTab() {
 }
 
 
-function AppShell() {
+function AppShell({ authEmail, onSignOut }) {
   const {
     tab, dispatch, activeSeason, aircraft, flights,
     scenarioName, scheduleDate, blockTable, airports, rotations, mxBlocks,
@@ -13688,7 +13773,7 @@ function AppShell() {
         { type: prev.type, cargoOp: prev.cargoOp },
         { type: curr.type, cargoOp: curr.cargoOp }
       );
-      const turnMins = turn.label === "tech stop" ? MIN_TURN : CARGO_MIN_TURN;
+      const turnMins = turn.label === "tech stop" ? MIN_TURN : CARGO_PLAN_TURN;
       const autoDep = Math.ceil((prevArr + turnMins) / SNAP) * SNAP;
       curr.dep = autoDep;
     }
@@ -14214,6 +14299,19 @@ function AppShell() {
         >
           {darkMode ? "☀︎" : "☾"}
         </button>
+
+        {/* Auth: user email + sign out */}
+        {REQUIRE_AUTH && authEmail && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8, flexShrink: 0 }}>
+            <span style={{ fontSize: 9, color: darkMode ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.35)", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{authEmail}</span>
+            <button onClick={onSignOut} style={{
+              background: darkMode ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)",
+              border: "none", borderRadius: 4, padding: "3px 8px", cursor: "pointer",
+              fontSize: 9, fontFamily: FONT, fontWeight: 600,
+              color: darkMode ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.4)",
+            }}>Sign Out</button>
+          </div>
+        )}
       </div>
 
       {/* ── Scenario bar ────────────────────────────────────────────── */}
@@ -15199,13 +15297,90 @@ function AppShell() {
 
 
 // ╔═══════════════════════════════════════════════════════════════════════════╗
+// ║  LOGIN SCREEN                                                            ║
+// ╚═══════════════════════════════════════════════════════════════════════════╝
+
+function LoginScreen({ onLogin }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [dark, setDark] = useState(() => { try { return window.__msc_dark === true; } catch { return false; } });
+  const P = dark ? C_DARK : C_LIGHT;
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!email || !password) { setError("Please enter email and password"); return; }
+    setError(""); setLoading(true);
+    try {
+      const user = await authSignIn(email.trim(), password);
+      onLogin(user);
+    } catch (err) {
+      setError(err.message || "Sign in failed");
+    } finally { setLoading(false); }
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: P.bg, fontFamily: FONT }}>
+      <div style={{ width: 360, padding: 40, borderRadius: 16, background: P.white, border: `1px solid ${P.brownLight}`, boxShadow: "0 8px 40px rgba(0,0,0,0.1)" }}>
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <img src={dark ? MSC_LOGO_DARK : MSC_LOGO} alt="MSC Air Cargo" style={{ height: 36, marginBottom: 12 }} />
+          <div style={{ fontSize: 14, fontWeight: 700, color: P.brownDark, letterSpacing: -0.3 }}>Schedule Simulator</div>
+          <div style={{ fontSize: 10, color: P.textMuted, marginTop: 4 }}>Sign in to continue</div>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ fontSize: 10, fontWeight: 600, color: P.textMuted, display: "block", marginBottom: 4 }}>Email</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+              placeholder="you@msc.com" autoFocus
+              style={{ width: "100%", padding: "10px 12px", fontSize: 13, fontFamily: FONT, borderRadius: 8, border: `1.5px solid ${P.brownLight}`, background: P.bg, color: P.text, outline: "none", boxSizing: "border-box" }} />
+          </div>
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 10, fontWeight: 600, color: P.textMuted, display: "block", marginBottom: 4 }}>Password</label>
+            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+              placeholder="••••••••"
+              style={{ width: "100%", padding: "10px 12px", fontSize: 13, fontFamily: FONT, borderRadius: 8, border: `1.5px solid ${P.brownLight}`, background: P.bg, color: P.text, outline: "none", boxSizing: "border-box" }} />
+          </div>
+          {error && (
+            <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 6, background: P.dangerLight, color: P.danger, fontSize: 11, fontWeight: 600 }}>{error}</div>
+          )}
+          <button type="submit" disabled={loading}
+            style={{
+              width: "100%", padding: "11px", fontSize: 13, fontWeight: 700, fontFamily: FONT,
+              background: loading ? P.brownLight : "#EED484", color: "#222221",
+              border: "none", borderRadius: 8, cursor: loading ? "default" : "pointer",
+            }}>
+            {loading ? "Signing in…" : "Sign In"}
+          </button>
+        </form>
+        <div style={{ textAlign: "center", marginTop: 16 }}>
+          <button onClick={() => { setDark(d => !d); window.__msc_dark = !dark; }}
+            style={{ background: "none", border: "none", cursor: "pointer", fontSize: 12, color: P.textMuted }}>
+            {dark ? "☀︎ Light" : "☾ Dark"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ╔═══════════════════════════════════════════════════════════════════════════╗
 // ║  DEFAULT EXPORT                                                          ║
 // ╚═══════════════════════════════════════════════════════════════════════════╝
 
 export default function ScheduleSimulator() {
+  const [authUser, setAuthUser] = useState(() => REQUIRE_AUTH ? authLoadSession() : { email: "local" });
+
+  if (REQUIRE_AUTH && !authUser) {
+    return <LoginScreen onLogin={setAuthUser} />;
+  }
+
   return (
     <ScheduleProvider>
-      <AppShell />
+      <AppShell
+        authEmail={authUser?.email}
+        onSignOut={() => { authSignOut(); setAuthUser(null); }}
+      />
     </ScheduleProvider>
   );
 }
