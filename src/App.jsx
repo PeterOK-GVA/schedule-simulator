@@ -4099,6 +4099,12 @@ function fmtISO(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+/** Format a Date as "DD-MM-YYYY" */
+function fmtDDMMYYYY(date) {
+  if (!date || isNaN(date.getTime())) return "";
+  return `${String(date.getDate()).padStart(2, "0")}-${String(date.getMonth() + 1).padStart(2, "0")}-${date.getFullYear()}`;
+}
+
 /** Get the date for a specific day (1=Mon..7=Sun) in a given ISO week */
 function weekDayDate(week, year, day) {
   if (!week || !year) return null;
@@ -7750,18 +7756,11 @@ function GanttTab() {
                 <g key={d}>
                   <rect x={x} y={0} width={dayW} height={DAY_HDR_H}
                     fill={isWknd ? C.yellowMid : C.offWhite2} />
-                  <text x={x + dayW / 2} y={ui?.weekNum ? DAY_HDR_H / 2 + 1 : DAY_HDR_H / 2 + 5}
+                  <text x={x + dayW / 2} y={DAY_HDR_H / 2 + 5}
                     fill={isWknd ? C.yellowHeavy : C.brownDark}
                     fontSize={11} fontFamily={FONT} fontWeight="700" textAnchor="middle">
-                    {DAY_NAMES[d - 1]}
+                    {DAY_NAMES[d - 1]}{ui?.weekNum && ui?.weekYear ? ` ${fmtDDMMM(weekDayDate(ui.weekNum, ui.weekYear, d))}` : ""}
                   </text>
-                  {ui?.weekNum && ui?.weekYear && (
-                    <text x={x + dayW / 2} y={DAY_HDR_H / 2 + 12}
-                      fill={isWknd ? C.yellowHeavy : C.textMuted}
-                      fontSize={8} fontFamily={MONO} fontWeight="500" textAnchor="middle" opacity="0.8">
-                      {fmtDDMMM(weekDayDate(ui.weekNum, ui.weekYear, d))}
-                    </text>
-                  )}
                   <line x1={x} y1={0} x2={x} y2={svgH - 24}
                     stroke={C.brownLight} strokeWidth={d === 1 ? 0 : 1}
                     opacity={isWknd ? 1 : 0.4} />
@@ -9971,35 +9970,54 @@ function ScheduleTableTab() {
     (rotations || []).forEach(r => { rotMap[r.id] = r; });
 
     const wn = ui?.weekNum, wy = ui?.weekYear;
-    const header = ["Flight No", "Tail", "Origin", "Dest", "Type", "Cargo Op", "Block (hrs)",
+
+    const allFlights = flights.map(f => {
+      const ac = aircraft.find(a => a.id === f.acId);
+      const parts = (f.route || "").split("-");
+      const orig = parts[0] || "", dest = parts[1] || "";
+      const origAp = lookupAirport(orig), destAp = lookupAirport(dest);
+      const origOff = origAp ? origAp.utcOffset : 0;
+      const destOff = destAp ? destAp.utcOffset : 0;
+      const sta = f.dep + f.block;
+      const rot = f.rotationId ? rotMap[f.rotationId] : null;
+      return { ...f, ac, orig, dest, origOff, destOff, sta, rot };
+    }).sort((a, b) => {
+      const t = (a.ac?.reg || "").localeCompare(b.ac?.reg || "");
+      if (t !== 0) return t;
+      if (a.day !== b.day) return a.day - b.day;
+      return a.dep - b.dep;
+    });
+
+    // MSC brand colours
+    const mscNavy = "#1B365D";
+    const mscGold = "#EED484";
+    const bdr = "border: 1px solid #C0C0C0;";
+    const hdr = `${bdr} background: ${mscNavy}; color: #FFFFFF; font-weight: bold; font-size: 9pt; padding: 4px 6px; text-align: center; font-family: Calibri, sans-serif;`;
+    const cell = `${bdr} font-size: 9pt; padding: 3px 6px; font-family: Calibri, sans-serif; text-align: center;`;
+    const cellL = `${bdr} font-size: 9pt; padding: 3px 6px; font-family: Calibri, sans-serif;`;
+
+    // Column order: Flight No, Tail, Origin, Dest, Type, Cargo Op, Block (hrs), DOW(Z), Date(Z), STD(Z), STA(Z), +1(Z), DOW(L), Date(L), STD(L), STA(L), +1(L), Customer
+    const headers = ["Flight No", "Tail", "Origin", "Dest", "Type", "Cargo Op", "Block (hrs)",
       "DOW (Zulu)", "Date (Zulu)", "STD (Zulu)", "STA (Zulu)", "+1 (Zulu)",
-      "DOW (Local)", "Date (Local)", "STD (Local)", "STA (Local)", "+1 (Local)",
-      "Customer", "Rotation", "Locked"];
+      "DOW (Local)", "Date (Local)", "STD (Local)", "STA (Local)", "+1 (Local)", "Customer"];
 
-    const allFlights = flights
-      
-      .map(f => {
-        const ac = aircraft.find(a => a.id === f.acId);
-        const parts = (f.route || "").split("-");
-        const orig = parts[0] || "", dest = parts[1] || "";
-        const origAp = lookupAirport(orig), destAp = lookupAirport(dest);
-        const origOff = origAp ? origAp.utcOffset : 0;
-        const destOff = destAp ? destAp.utcOffset : 0;
-        const sta = f.dep + f.block;
-        const rot = f.rotationId ? rotMap[f.rotationId] : null;
-        return { ...f, ac, orig, dest, origOff, destOff, sta, rot };
-      })
-      .sort((a, b) => {
-        const t = (a.ac?.reg || "").localeCompare(b.ac?.reg || "");
-        if (t !== 0) return t;
-        if (a.day !== b.day) return a.day - b.day;
-        return a.dep - b.dep;
-      });
+    let html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets>
+<x:ExcelWorksheet><x:Name>Schedule</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet>
+</x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head><body>`;
 
-    const dataRows = allFlights.map(f => {
+    // Title row
+    html += `<table border="1" cellpadding="3" cellspacing="0" style="border-collapse: collapse;">`;
+    html += `<tr><td colspan="${headers.length}" style="${bdr} background: ${mscGold}; color: ${mscNavy}; font-size: 11pt; font-weight: bold; padding: 8px 12px; font-family: Calibri, sans-serif;">`;
+    html += `MSC Air Cargo — ${scenarioName || "Schedule"}${wn ? ` · Week ${wn}/${wy}` : ""}</td></tr>`;
+
+    // Header row
+    html += `<tr>${headers.map(h => `<th style="${hdr}">${h}</th>`).join("")}</tr>`;
+
+    allFlights.forEach(f => {
       const stdZ = toHHMM(f.dep);
       const staZ = toHHMM(f.sta);
-      const p1Z  = dayShiftUtc(f.dep, f.block) || "";
+      const p1Z = dayShiftUtc(f.dep, f.block);
       const stdLocalMins = f.dep + f.origOff * 60;
       const staLocalMins = f.sta + f.destOff * 60;
       const stdL = toHHMM(stdLocalMins);
@@ -10007,29 +10025,43 @@ function ScheduleTableTab() {
       let dowL = f.day;
       if (stdLocalMins < 0) dowL = dowL === 1 ? 7 : dowL - 1;
       if (stdLocalMins >= DAY_MINS) dowL = dowL === 7 ? 1 : dowL + 1;
-      const p1L = dayShiftLocal(f.dep, f.block, f.origOff, f.destOff) || "";
-      const dateZ = wn && wy ? fmtISO(weekDayDate(wn, wy, f.day)) : "";
-      const dateLDay = wn && wy ? weekDayDate(wn, wy, dowL) : null;
-      const dateL = dateLDay ? fmtISO(dateLDay) : "";
-      return [
-        f.flightNum || "", f.ac?.reg || "", f.orig, f.dest, f.type || "",
-        f.cargoOp || "none",
-        +(f.block / 60).toFixed(2),
-        f.day, dateZ, stdZ, staZ, p1Z, dowL, dateL, stdL, staL, p1L,
-        f.customer || "", f.rot?.name || "", f.rot?.locked ? "Y" : "",
-      ];
-    });
+      const p1L = dayShiftLocal(f.dep, f.block, f.origOff, f.destOff);
+      const dateZ = wn && wy ? fmtDDMMYYYY(weekDayDate(wn, wy, f.day)) : "";
+      const dateL = wn && wy ? fmtDDMMYYYY(weekDayDate(wn, wy, dowL)) : "";
+      const isFerry = f.type === "P";
+      const rowBg = isFerry ? "background: #F3F1EE;" : "";
 
-    const ws = XLSX.utils.aoa_to_sheet([header, ...dataRows]);
-    ws["!cols"] = [
-      { wch: 12 }, { wch: 10 }, { wch: 6 }, { wch: 6 }, { wch: 6 }, { wch: 10 }, { wch: 10 },
-      { wch: 5 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 5 },
-      { wch: 5 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 5 },
-    ];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Schedule");
+      html += `<tr>`;
+      html += `<td style="${cellL} ${rowBg}">${f.flightNum || ""}</td>`;
+      html += `<td style="${cell} ${rowBg}">${f.ac?.reg || ""}</td>`;
+      html += `<td style="${cell} ${rowBg} font-weight: bold;">${f.orig}</td>`;
+      html += `<td style="${cell} ${rowBg} font-weight: bold;">${f.dest}</td>`;
+      html += `<td style="${cell} ${rowBg}">${f.type || ""}</td>`;
+      html += `<td style="${cell} ${rowBg}">${f.cargoOp || ""}</td>`;
+      html += `<td style="${cell} ${rowBg}">${+(f.block / 60).toFixed(2)}</td>`;
+      html += `<td style="${cell} ${rowBg}">${f.day}</td>`;
+      html += `<td style="${cell} ${rowBg}">${dateZ}</td>`;
+      html += `<td style="${cell} ${rowBg}">${stdZ}</td>`;
+      html += `<td style="${cell} ${rowBg}">${staZ}</td>`;
+      html += `<td style="${cell} ${rowBg}">${p1Z > 0 ? `+${p1Z}` : ""}</td>`;
+      html += `<td style="${cell} ${rowBg}">${dowL}</td>`;
+      html += `<td style="${cell} ${rowBg}">${dateL}</td>`;
+      html += `<td style="${cell} ${rowBg}">${stdL}</td>`;
+      html += `<td style="${cell} ${rowBg}">${staL}</td>`;
+      html += `<td style="${cell} ${rowBg}">${p1L > 0 ? `+${p1L}` : ""}</td>`;
+      html += `<td style="${cellL} ${rowBg}">${f.customer || ""}</td>`;
+      html += `</tr>`;
+    });
+    html += `</table></body></html>`;
+
+    const blob = new Blob([html], { type: "application/vnd.ms-excel" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
     const safeName = (scenarioName || "scenario").replace(/[^a-zA-Z0-9_\- ]/g, "").trim().replace(/ /g, "_");
-    XLSX.writeFile(wb, `msc_${safeName}.xlsx`);
+    a.download = `msc_${safeName}.xls`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   // ── Table styles ───────────────────────────────────────────────────
