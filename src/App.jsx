@@ -14288,6 +14288,8 @@ function AppShell({ authEmail, onSignOut }) {
       const rawCargoOp = (col(row, "Cargo Op", "CargoOp", "cargo_op", "Cargo Operation") || "").toLowerCase();
       const CARGO_OP_MAP = { both: "both", "upload+offload": "both", "upload & offload": "both", upload: "upload", offload: "offload", load: "upload", unload: "offload", none: "none", "": "both" };
       const cargoOp = CARGO_OP_MAP[rawCargoOp] || (["F","H","C"].includes(type) ? "both" : "none");
+      const rawBlockHrs = col(row, "Block (hrs)", "Block(hrs)", "block_hrs", "Block");
+      const customer = col(row, "Customer", "customer");
       const schedDate = col(row, "Schedule Date", "ScheduleDate");
 
       if (!orig || !dest || !stdZ || !dowZ) return;
@@ -14295,12 +14297,18 @@ function AppShell({ authEmail, onSignOut }) {
       const depMins = minsFromHHMM(stdZ) || 0;
       let blockMins;
       if (staZ) {
+        // Compute from STD and STA
         let staMins = minsFromHHMM(staZ) || 0;
         if (plusOne === "+1" || plusOne === "1") staMins += DAY_MINS;
         else if (plusOne === "+2" || plusOne === "2") staMins += DAY_MINS * 2;
         blockMins = staMins > depMins ? staMins - depMins : (staMins + DAY_MINS - depMins);
-      } else {
-        // No STA provided — look up block time from route table or estimate
+      } else if (rawBlockHrs) {
+        // Block time provided directly in hours (e.g. "10.58")
+        const hrs = parseFloat(rawBlockHrs);
+        if (hrs > 0) blockMins = Math.round(hrs * 60);
+      }
+      if (!blockMins) {
+        // Fallback: look up from route table or estimate
         const route = `${orig}-${dest}`;
         const impAoc = tail ? deriveAoc(tail).code : null;
         const entry = resolveBlockEntry(blockTable, route, impAoc, flightNum);
@@ -14347,6 +14355,7 @@ function AppShell({ authEmail, onSignOut }) {
           day,
           cargoOp,
           payload,
+          customer: customer || "",
         });
       });
 
