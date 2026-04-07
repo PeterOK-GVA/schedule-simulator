@@ -87,6 +87,47 @@ function authLoadSession() {
   } catch { return null; }
 }
 
+// ── localStorage encryption (used by offline mode) ──────────────────────────
+const ENCRYPT_LOCAL = typeof window !== "undefined" && window.crypto?.subtle;
+let _encKeyPromise = null;
+
+async function getEncKey() {
+  if (_encKeyPromise) return _encKeyPromise;
+  _encKeyPromise = (async () => {
+    const raw = new TextEncoder().encode("msc-schedule-sim-local-" + (navigator.userAgent || "").slice(0, 50));
+    const hash = await crypto.subtle.digest("SHA-256", raw);
+    return crypto.subtle.importKey("raw", hash, "AES-GCM", false, ["encrypt", "decrypt"]);
+  })();
+  return _encKeyPromise;
+}
+
+async function encryptData(plaintext) {
+  if (!ENCRYPT_LOCAL) return plaintext;
+  try {
+    const key = await getEncKey();
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encoded = new TextEncoder().encode(plaintext);
+    const cipher = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, encoded);
+    const combined = new Uint8Array(iv.length + cipher.byteLength);
+    combined.set(iv);
+    combined.set(new Uint8Array(cipher), iv.length);
+    return btoa(String.fromCharCode(...combined));
+  } catch { return plaintext; }
+}
+
+async function decryptData(ciphertext) {
+  if (!ENCRYPT_LOCAL) return ciphertext;
+  try {
+    if (!ciphertext.match(/^[A-Za-z0-9+/=]+$/)) return ciphertext; // not encrypted, return as-is
+    const key = await getEncKey();
+    const combined = Uint8Array.from(atob(ciphertext), c => c.charCodeAt(0));
+    const iv = combined.slice(0, 12);
+    const data = combined.slice(12);
+    const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, data);
+    return new TextDecoder().decode(decrypted);
+  } catch { return ciphertext; } // decryption failed, return raw (might be unencrypted legacy data)
+}
+
 async function fsGet(collection, docId) {
   try {
     const token = await getAuthToken();
@@ -303,6 +344,16 @@ const LABEL_WIDTH = 130;
 const SNAP        = 5;
 const DAY_MINS    = 24 * 60;
 const WEEK_MINS   = 7 * DAY_MINS;
+const MAX_UPLOAD_MB = 10;
+const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
+
+function checkFileSize(file) {
+  if (file.size > MAX_UPLOAD_BYTES) {
+    alert(`File too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum is ${MAX_UPLOAD_MB} MB.`);
+    return false;
+  }
+  return true;
+}
 const MIN_TURN    = 90;  // 1.5h tech stop minimum
 const POOL_AC_ID  = "__pool__";
 const ZOOM_LEVELS = [14, 21, 28, 35, 42, 56, 70, 84];
@@ -3965,8 +4016,22 @@ function genAirportId()   { return "a"  + (nextAirportId++); }
  *  e.g. "CP 192" → "CP192", " 5y 336 " → "5Y336" */
 function normFlightNum(fn) {
   if (!fn) return "";
-  return fn.toString().trim().toUpperCase().replace(/\s+/g, "");
+  return fn.toString().trim().toUpperCase().replace(/\s+/g, "").slice(0, 10);
 }
+
+/** Sanitise route: uppercase, trim, enforce XXX-YYY format, max 9 chars */
+function sanitiseRoute(route) {
+  if (!route) return "";
+  const r = route.toString().trim().toUpperCase().replace(/[^A-Z0-9\-]/g, "");
+  return r.slice(0, 9);
+}
+
+/** Sanitise free-text fields to prevent injection — strip HTML tags and limit length */
+function sanitiseText(text, maxLen = 200) {
+  if (!text) return "";
+  return text.toString().replace(/<[^>]*>/g, "").trim().slice(0, maxLen);
+}
+
 function genAircraftId()  { return "ac" + Date.now(); }
 function genMxBlockId()   { return "mx" + Date.now() + Math.random().toString(36).slice(2, 6); }
 
@@ -4365,6 +4430,8 @@ function scheduleReducer(state, action) {
     case A.ADD_FLIGHT: {
       const f = { ...action.flight, id: action.flight.id || genFlightId() };
       f.flightNum = normFlightNum(f.flightNum);
+      if (f.route) f.route = sanitiseRoute(f.route);
+      if (f.customer) f.customer = sanitiseText(f.customer);
       // Ferry and maintenance flights never carry cargo
       if (f.type === "P" || f.type === "M") f.cargoOp = "none";
       // Auto-populate block + payload using the unified lookup
@@ -4401,6 +4468,8 @@ function scheduleReducer(state, action) {
     case A.UPDATE_FLIGHT: {
       const updates = { ...action.flight };
       if (updates.flightNum !== undefined) updates.flightNum = normFlightNum(updates.flightNum);
+      if (updates.route !== undefined) updates.route = sanitiseRoute(updates.route);
+      if (updates.customer !== undefined) updates.customer = sanitiseText(updates.customer);
       // Ferry and maintenance flights never carry cargo — auto-enforce on type change
       if (updates.type === "P" || updates.type === "M") updates.cargoOp = "none";
       return {
@@ -10953,6 +11022,7 @@ function BlockTimeTab() {
   function handleExcel(e) {
     const file = e.target.files[0];
     if (!file) return;
+    if (!checkFileSize(file)) { e.target.value = ""; return; }
     const reader = new FileReader();
     reader.onload = ev => {
       try {
@@ -11447,6 +11517,7 @@ function AirportsTab() {
   function handleAirportExcel(e) {
     const file = e.target.files[0];
     if (!file) return;
+    if (!checkFileSize(file)) { e.target.value = ""; return; }
     const reader = new FileReader();
     reader.onload = ev => {
       try {
@@ -11977,6 +12048,7 @@ function SSIMTab() {
   function handleImportFile(e) {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
+    if (!checkFileSize(file)) { e.target.value = ""; return; }
     const reader = new FileReader();
     reader.onload = function(ev) {
       setImportText(ev.target.result || "");
@@ -13996,6 +14068,7 @@ function AppShell({ authEmail, onSignOut }) {
   function loadFile(e) {
     const file = e.target.files[0];
     if (!file) return;
+    if (!checkFileSize(file)) { e.target.value = ""; return; }
 
     const isJSON = file.name.toLowerCase().endsWith(".json");
 
