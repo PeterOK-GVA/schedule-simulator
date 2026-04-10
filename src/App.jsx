@@ -403,7 +403,7 @@ const C_DARK = {
 let C = C_LIGHT;
 
 const FONT = "'Archivo','Arial',sans-serif";
-const MONO = "'IBM Plex Mono','Courier New',monospace";
+// Note: MONO removed — all text now uses Archivo (FONT) for a unified look.
 
 
 // ── AOC detection — derive from registration prefix ──────────────────────────
@@ -6098,7 +6098,7 @@ function useGanttDragDrop(svgRef, hourW, rowLayoutRef, displayAcRef, dragActiveR
           const lbl = document.createElementNS(ns, "text");
           lbl.setAttribute("data-drag-label", drag.id);
           lbl.setAttribute("font-size", "10");
-          lbl.setAttribute("font-family", "IBM Plex Mono, monospace");
+          lbl.setAttribute("font-family", "Archivo, Arial, sans-serif");
           lbl.setAttribute("font-weight", "700");
           lbl.setAttribute("fill", "#1B365D");
           lbl.setAttribute("text-anchor", "middle");
@@ -6446,7 +6446,7 @@ function CurfewInfo({ depApt, arrApt, lookupAirport }) {
     const sameTimes = hasDep && hasArr && ap.depOpen === ap.arrOpen && ap.depClose === ap.arrClose;
     return (
       <span key={ap.code}>
-        <span style={{ fontFamily: MONO, fontWeight: 700 }}>{ap.code}</span>
+        <span style={{ fontFamily: FONT, fontWeight: 700 }}>{ap.code}</span>
         {" "}
         {is247 ? (
           <span style={{ color: C.success }}>24/7</span>
@@ -7574,7 +7574,7 @@ function GanttTab() {
             onChange={e => setGanttSearch(e.target.value.toUpperCase())}
             placeholder="Route, flight no, tail, airport…"
             style={{
-              width: 160, padding: "4px 8px", fontSize: 10, fontFamily: MONO,
+              width: 160, padding: "4px 8px", fontSize: 10, fontFamily: FONT,
               border: `1px solid ${ganttSearch ? "#1B365D" : C.brownLight}`, borderRadius: 5,
               color: C.text, background: ganttSearch ? C.yellowLight : C.bg, outline: "none",
             }}
@@ -7597,10 +7597,10 @@ function GanttTab() {
           <span style={{ fontSize: 9, fontWeight: 600, color: C.textMuted }}>W</span>
           <input type="number" min={1} max={53} value={ui?.weekNum || ""}
             onChange={e => { const v = parseInt(e.target.value); if (v >= 1 && v <= 53 && ui?.setWeekNum) ui.setWeekNum(v); }}
-            style={{ width: 36, padding: "3px 4px", fontSize: 10, fontFamily: MONO, textAlign: "center", border: `1px solid ${C.brownLight}`, borderRadius: 4, color: C.text, background: C.bg, outline: "none" }} />
+            style={{ width: 36, padding: "3px 4px", fontSize: 10, fontFamily: FONT, textAlign: "center", border: `1px solid ${C.brownLight}`, borderRadius: 4, color: C.text, background: C.bg, outline: "none" }} />
           <input type="number" min={2020} max={2035} value={ui?.weekYear || ""}
             onChange={e => { const v = parseInt(e.target.value); if (v >= 2020 && v <= 2035 && ui?.setWeekYear) ui.setWeekYear(v); }}
-            style={{ width: 48, padding: "3px 4px", fontSize: 10, fontFamily: MONO, textAlign: "center", border: `1px solid ${C.brownLight}`, borderRadius: 4, color: C.text, background: C.bg, outline: "none" }} />
+            style={{ width: 48, padding: "3px 4px", fontSize: 10, fontFamily: FONT, textAlign: "center", border: `1px solid ${C.brownLight}`, borderRadius: 4, color: C.text, background: C.bg, outline: "none" }} />
           {ui?.weekNum && ui?.weekYear && (() => {
             const mon = weekDayDate(ui.weekNum, ui.weekYear, 1);
             const sun = weekDayDate(ui.weekNum, ui.weekYear, 7);
@@ -7616,12 +7616,12 @@ function GanttTab() {
               style={{
                 background: "transparent", border: "none",
                 cursor: zoomIdx === 0 ? "default" : "pointer",
-                fontSize: 15, fontWeight: 700, lineHeight: 1, fontFamily: MONO,
+                fontSize: 15, fontWeight: 700, lineHeight: 1, fontFamily: FONT,
                 color: zoomIdx === 0 ? C.brownLight : C.textSoft,
                 padding: "2px 5px", borderRadius: 4,
               }}>−</button>
             <span style={{
-              fontSize: 10, fontWeight: 600, fontFamily: MONO,
+              fontSize: 10, fontWeight: 600, fontFamily: FONT,
               color: C.textMuted, minWidth: 36, textAlign: "center",
             }}>{zoomPct}%</span>
             <button onClick={() => setZoomIdx(Math.min(ZOOM_LEVELS.length - 1, zoomIdx + 1))}
@@ -7629,7 +7629,7 @@ function GanttTab() {
               style={{
                 background: "transparent", border: "none",
                 cursor: zoomIdx === ZOOM_LEVELS.length - 1 ? "default" : "pointer",
-                fontSize: 15, fontWeight: 700, lineHeight: 1, fontFamily: MONO,
+                fontSize: 15, fontWeight: 700, lineHeight: 1, fontFamily: FONT,
                 color: zoomIdx === ZOOM_LEVELS.length - 1 ? C.brownLight : C.textSoft,
                 padding: "2px 5px", borderRadius: 4,
               }}>+</button>
@@ -7798,7 +7798,7 @@ function GanttTab() {
                   <g key={`${d}-${h}`}>
                     <text x={x + 3} y={DAY_HDR_H + HOUR_HDR_H / 2 + 4}
                       fill={major ? C.textSoft : C.textMuted}
-                      fontSize={major ? 10 : 9} fontFamily={MONO}
+                      fontSize={major ? 10 : 9} fontFamily={FONT}
                       fontWeight={major ? "700" : "400"} textAnchor="start">
                       {String(h).padStart(2, "0")}:00
                     </text>
@@ -7887,7 +7887,7 @@ function GanttTab() {
                         background: "transparent", border: "none", cursor: "pointer",
                         color: C.textMuted, fontSize: 10, padding: 0, lineHeight: 1,
                         width: 16, height: 16, display: "flex", alignItems: "center",
-                        justifyContent: "center", fontFamily: MONO,
+                        justifyContent: "center", fontFamily: FONT,
                       }}
                     >▼</button>
                   </foreignObject>
@@ -7895,7 +7895,7 @@ function GanttTab() {
                   {/* Registration label */}
                   <text x={24} y={ry + rowH / 2 - 4}
                     fill={C.text} fontSize={12}
-                    fontFamily={MONO} fontWeight="700">{ac.reg}</text>
+                    fontFamily={FONT} fontWeight="700">{ac.reg}</text>
 
                   {/* Tail stats: weekly BH + departures */}
                   {(() => {
@@ -8009,7 +8009,7 @@ function GanttTab() {
                             <rect x={cx - labelW / 2} y={midY - 10} width={labelW} height={18}
                               fill={bg} rx={4} stroke={col} strokeWidth="1.2" />
                             <text x={cx} y={midY + 2} fill={col}
-                              fontSize={9} fontFamily={MONO}
+                              fontSize={9} fontFamily={FONT}
                               fontWeight="700"
                               textAnchor="middle" style={{ userSelect: "none" }}>
                               {fmtTurn(t.gapMins)}
@@ -8140,7 +8140,7 @@ function GanttTab() {
                         {fWrapW > 30 && !isMaint && (
                           <text x={LABEL_WIDTH + 6} y={fy + fh / 2 + 1}
                             fill={searchMatch ? C.yellowHeavy : searchDim ? C.textMuted : connect ? C.danger : style.txt}
-                            fontSize={hourW >= 14 ? 10 : 8} fontFamily={MONO} fontWeight={searchMatch ? "800" : "700"}
+                            fontSize={hourW >= 14 ? 10 : 8} fontFamily={FONT} fontWeight={searchMatch ? "800" : "700"}
                             opacity="0.75"
                             style={{ pointerEvents: "none", userSelect: "none" }}>
                             {flight.route}
@@ -8151,7 +8151,7 @@ function GanttTab() {
                         {!isMaint && fMainW > 18 && (
                           <text x={fx + 6} y={fy + fh / 2 + (hourW >= 21 && fh > 28 ? -3 : 1)}
                             fill={searchMatch ? C.yellowHeavy : searchDim ? C.textMuted : connect ? C.danger : style.txt}
-                            fontSize={hourW >= 14 ? 10 : 8} fontFamily={MONO} fontWeight={searchMatch ? "800" : "700"}
+                            fontSize={hourW >= 14 ? 10 : 8} fontFamily={FONT} fontWeight={searchMatch ? "800" : "700"}
                             style={{ pointerEvents: "none", userSelect: "none" }}>
                             {flight.route}
                           </text>
@@ -8165,7 +8165,7 @@ function GanttTab() {
                           const lbl = (fn ? `${fn} · ${times}` : times) + cust;
                           return (
                             <text x={fx + 6} y={fy + fh / 2 + 10}
-                              fill={style.txt} fontSize={7} fontFamily={MONO} opacity="0.5"
+                              fill={style.txt} fontSize={7} fontFamily={FONT} opacity="0.5"
                               fontWeight="600"
                               style={{ pointerEvents: "none", userSelect: "none" }}>
                               {lbl}
@@ -8404,9 +8404,9 @@ function GanttTab() {
               <div style={{ fontWeight: 700, fontSize: 13, color: C.brownDark, marginBottom: 4 }}>
                 {mx.label || "MX"} <span style={{ fontSize: 10, fontWeight: 600, color: MX_STYLE().label, background: MX_STYLE().bg, padding: "1px 6px", borderRadius: 3 }}>Maintenance</span>
               </div>
-              <div><span style={{ color: C.textMuted, fontSize: 10 }}>Aircraft:</span> <span style={{ fontFamily: MONO, fontWeight: 700 }}>{ac?.reg || "?"}</span></div>
-              <div><span style={{ color: C.textMuted, fontSize: 10 }}>Day {mx.day}:</span> <span style={{ fontFamily: MONO }}>{toHHMM(mx.start)} – {toHHMM(mx.start + mx.duration)}</span></div>
-              <div><span style={{ color: C.textMuted, fontSize: 10 }}>Duration:</span> <span style={{ fontFamily: MONO, fontWeight: 700 }}>{durH}h{durM > 0 ? ` ${durM}m` : ""}</span></div>
+              <div><span style={{ color: C.textMuted, fontSize: 10 }}>Aircraft:</span> <span style={{ fontFamily: FONT, fontWeight: 700 }}>{ac?.reg || "?"}</span></div>
+              <div><span style={{ color: C.textMuted, fontSize: 10 }}>Day {mx.day}:</span> <span style={{ fontFamily: FONT }}>{toHHMM(mx.start)} – {toHHMM(mx.start + mx.duration)}</span></div>
+              <div><span style={{ color: C.textMuted, fontSize: 10 }}>Duration:</span> <span style={{ fontFamily: FONT, fontWeight: 700 }}>{durH}h{durM > 0 ? ` ${durM}m` : ""}</span></div>
             </div>
           );
         }
@@ -8442,9 +8442,9 @@ function GanttTab() {
               marginBottom: 6, display: "flex", alignItems: "center", gap: 8,
             }}>
               {f.flightNum && (
-                <span style={{ fontFamily: MONO, fontSize: 11, color: C.textSoft }}>{f.flightNum}</span>
+                <span style={{ fontFamily: FONT, fontSize: 11, color: C.textSoft }}>{f.flightNum}</span>
               )}
-              <span style={{ fontFamily: MONO }}>
+              <span style={{ fontFamily: FONT }}>
                 {f.route}
               </span>
               <Badge
@@ -8468,7 +8468,7 @@ function GanttTab() {
               const depOff = origAp ? `UTC${origAp.utcOffset >= 0 ? "+" : ""}${origAp.utcOffset}` : null;
               const arrOff = destAp ? `UTC${destAp.utcOffset >= 0 ? "+" : ""}${destAp.utcOffset}` : null;
               const thS = { fontSize: 9, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.5, padding: "2px 8px 2px 0", textAlign: "left" };
-              const tdS = { fontSize: 12, fontFamily: MONO, fontWeight: 700, padding: "2px 8px", textAlign: "center" };
+              const tdS = { fontSize: 12, fontFamily: FONT, fontWeight: 700, padding: "2px 8px", textAlign: "center" };
               const subS = { fontSize: 9, color: C.textMuted, fontWeight: 400, fontFamily: FONT };
               const dayBadge = (n) => n > 0 ? <span style={{ color: C.brownDark, fontSize: 9, marginLeft: 2 }}>+{n}</span> : n < 0 ? <span style={{ color: C.danger || "#C62828", fontSize: 9, marginLeft: 2 }}>{n}</span> : null;
               return (
@@ -8605,7 +8605,7 @@ function GanttTab() {
             <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
               <div style={{ flex: 1 }}>
                 <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Dep</label>
-                <input style={{ ...iStyle, fontFamily: MONO, textTransform: "uppercase", letterSpacing: 1 }} placeholder="LGG"
+                <input style={{ ...iStyle, fontFamily: FONT, textTransform: "uppercase", letterSpacing: 1 }} placeholder="LGG"
                   maxLength={4}
                   value={editModal.depApt || ""}
                   onChange={e => setEditModal({ ...editModal, depApt: e.target.value.toUpperCase() })} />
@@ -8613,7 +8613,7 @@ function GanttTab() {
               <div style={{ display: "flex", alignItems: "center", paddingTop: 14, color: C.textMuted, fontSize: 14 }}>→</div>
               <div style={{ flex: 1 }}>
                 <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Arr</label>
-                <input style={{ ...iStyle, fontFamily: MONO, textTransform: "uppercase", letterSpacing: 1 }} placeholder="JFK"
+                <input style={{ ...iStyle, fontFamily: FONT, textTransform: "uppercase", letterSpacing: 1 }} placeholder="JFK"
                   maxLength={4}
                   value={editModal.arrApt || ""}
                   onChange={e => setEditModal({ ...editModal, arrApt: e.target.value.toUpperCase() })} />
@@ -8691,7 +8691,7 @@ function GanttTab() {
                 <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
                   <div style={{ width: 100 }}>
                     <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Block Time</label>
-                    <input style={{ ...iStyle, fontFamily: MONO, fontWeight: 700, color: isOverridden ? C.yellowHeavy : C.brownDark }}
+                    <input style={{ ...iStyle, fontFamily: FONT, fontWeight: 700, color: isOverridden ? C.yellowHeavy : C.brownDark }}
                       type="time" value={`${blockHH}:${blockMM}`}
                       onChange={e => {
                         const [hh, mm] = e.target.value.split(":").map(Number);
@@ -8865,7 +8865,7 @@ function GanttTab() {
               }} style={{
                 background: C.offWhite2, color: C.text, border: `1px solid ${C.brownLight}`,
                 padding: "4px 8px", borderRadius: 4, cursor: "pointer",
-                fontSize: 10, fontFamily: MONO, fontWeight: 600,
+                fontSize: 10, fontFamily: FONT, fontWeight: 600,
               }}>{m > 0 ? `+${m}` : m}m</button>
             ))}
 
@@ -8880,7 +8880,7 @@ function GanttTab() {
             }} style={{
               background: C.offWhite2, color: C.text,
               border: `1px solid ${C.brownLight}`,
-              padding: "4px 8px", borderRadius: 4, fontSize: 10, fontFamily: MONO,
+              padding: "4px 8px", borderRadius: 4, fontSize: 10, fontFamily: FONT,
             }}>
               <option value="">Aircraft…</option>
               {aircraft.map(ac => <option key={ac.id} value={ac.id}>{ac.reg}</option>)}
@@ -9061,7 +9061,7 @@ function GanttTab() {
                 value={mxEditModal.duration}
                 onChange={e => setMxEditModal({ ...mxEditModal, duration: Math.max(30, parseInt(e.target.value) || 0) })} />
               <span style={{ fontSize: 10, color: C.textMuted }}>min</span>
-              <span style={{ fontSize: 11, color: C.textSoft, fontFamily: MONO }}>
+              <span style={{ fontSize: 11, color: C.textSoft, fontFamily: FONT }}>
                 = {Math.floor(mxEditModal.duration / 60)}h {mxEditModal.duration % 60 > 0 ? `${mxEditModal.duration % 60}m` : ""}
               </span>
             </div>
@@ -9339,7 +9339,7 @@ function DashboardTab() {
     background: DB.card, borderRadius: 12, border: `1px solid ${DB.bdr}`,
     boxShadow: "0 1px 4px rgba(0,0,0,0.06)", padding: "20px 24px", ...s,
   });
-  const kpiVal = { fontSize: 30, fontWeight: 700, color: DB.dark, fontFamily: MONO, lineHeight: 1.1 };
+  const kpiVal = { fontSize: 30, fontWeight: 700, color: DB.dark, fontFamily: FONT, lineHeight: 1.1 };
   const kpiLbl = { fontSize: 11, color: DB.soft, textTransform: "uppercase", letterSpacing: 0.6, marginTop: 4, fontWeight: 500 };
   const kpiSub = { fontSize: 12, color: DB.mid, marginTop: 2 };
   const secHdr = { fontSize: 13, fontWeight: 700, color: DB.dark, marginBottom: 14, display: "flex", alignItems: "center", gap: 8 };
@@ -9395,12 +9395,12 @@ function DashboardTab() {
           borderBottom: `2px solid ${DB.bdr}`, whiteSpace: "nowrap",
         };
         const tdS = {
-          padding: "8px 12px", textAlign: "right", fontFamily: MONO,
+          padding: "8px 12px", textAlign: "right", fontFamily: FONT,
           fontSize: 13, fontWeight: 700, color: DB.dark,
           borderBottom: `1px solid ${DB.barBg}`,
         };
         const tdTail = {
-          padding: "5px 12px", textAlign: "right", fontFamily: MONO,
+          padding: "5px 12px", textAlign: "right", fontFamily: FONT,
           fontSize: 11, fontWeight: 600, color: DB.mid,
           borderBottom: `1px solid ${DB.barBg}`,
         };
@@ -9436,7 +9436,7 @@ function DashboardTab() {
                           borderLeft: `4px solid ${g.def.stripe}`,
                           whiteSpace: "nowrap",
                         }}>
-                          <span style={{ fontSize: 10, fontFamily: MONO, color: DB.mid, marginRight: 6 }}>{expanded ? "▼" : "▶"}</span>
+                          <span style={{ fontSize: 10, fontFamily: FONT, color: DB.mid, marginRight: 6 }}>{expanded ? "▼" : "▶"}</span>
                           {g.def.name}
                           {g.kpi.ferryBH > 0 && (
                             <span style={{ fontSize: 9, color: DB.mid, fontWeight: 400, marginLeft: 8 }}>
@@ -9461,7 +9461,7 @@ function DashboardTab() {
                               padding: "5px 12px 5px 32px", fontWeight: 600, fontSize: 11,
                               color: DB.mid, borderBottom: `1px solid ${DB.barBg}`,
                               borderLeft: `4px solid transparent`,
-                              fontFamily: MONO,
+                              fontFamily: FONT,
                             }}>
                               {ac.reg}
                             </td>
@@ -9523,7 +9523,7 @@ function DashboardTab() {
                   <span style={{ width: 9, height: 9, borderRadius: 2, background: t.bg, display: "inline-block" }} />
                   <span style={{ fontSize: 11, fontWeight: 700, color: DB.dark }}>{t.label}</span>
                 </div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: DB.dark, fontFamily: MONO }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: DB.dark, fontFamily: FONT }}>
                   {t.bh.toFixed(1)}h
                 </div>
                 <div style={{ fontSize: 10, color: DB.soft }}>
@@ -9540,7 +9540,7 @@ function DashboardTab() {
           {acUtils.map(ac => (
             <div key={ac.reg} style={{ marginBottom: 10 }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
-                <span style={{ fontFamily: MONO, fontWeight: 700, fontSize: 11, color: DB.dark }}>{ac.reg}</span>
+                <span style={{ fontFamily: FONT, fontWeight: 700, fontSize: 11, color: DB.dark }}>{ac.reg}</span>
                 <span style={{ fontSize: 10, color: DB.soft }}>
                   {ac.bh.toFixed(1)}h · {ac.dep} dep · <span style={{
                     color: ac.pct > 80 ? DB.green : ac.pct > 50 ? DB.goldHeavy : DB.muted, fontWeight: 600,
@@ -9593,7 +9593,7 @@ function DashboardTab() {
                     </th>
                     {stList.map(s => (
                       <th key={s} style={{
-                        padding: "4px 6px", fontSize: 9, fontFamily: MONO, fontWeight: 700,
+                        padding: "4px 6px", fontSize: 9, fontFamily: FONT, fontWeight: 700,
                         color: DB.dark, textAlign: "center", borderBottom: `2px solid ${DB.bdr}`,
                         writingMode: stList.length > 12 ? "vertical-rl" : undefined,
                         whiteSpace: "nowrap", minWidth: stList.length > 12 ? 24 : 36,
@@ -9605,7 +9605,7 @@ function DashboardTab() {
                   {stList.map(orig => (
                     <tr key={orig}>
                       <td style={{
-                        padding: "3px 8px", fontSize: 10, fontFamily: MONO, fontWeight: 700,
+                        padding: "3px 8px", fontSize: 10, fontFamily: FONT, fontWeight: 700,
                         color: DB.dark, borderBottom: `1px solid ${DB.barBg}`, whiteSpace: "nowrap",
                       }}>{orig}</td>
                       {stList.map(dest => {
@@ -9615,7 +9615,7 @@ function DashboardTab() {
                         return (
                           <td key={dest} style={{
                             padding: "3px 6px", textAlign: "center", fontSize: 10,
-                            fontFamily: MONO, fontWeight: freq > 0 ? 700 : 400,
+                            fontFamily: FONT, fontWeight: freq > 0 ? 700 : 400,
                             color: freq > 0 ? DB.dark : DB.muted,
                             background: isSelf ? C.offWhite2 : freq > 0 ? `rgba(245,158,11,${opacity})` : DB.card,
                             borderBottom: `1px solid ${DB.barBg}`,
@@ -9921,7 +9921,7 @@ function ScheduleTableTab() {
             onBlur={() => commitEdit(row)}
             onKeyDown={e => onEditKey(e, row)}
             style={{
-              width: "100%", padding: "4px 6px", fontSize: 12, fontFamily: MONO,
+              width: "100%", padding: "4px 6px", fontSize: 12, fontFamily: FONT,
               border: `2px solid ${C.yellowHeavy}`, borderRadius: 4,
               color: C.text, background: C.white, outline: "none",
             }}
@@ -9959,7 +9959,7 @@ function ScheduleTableTab() {
                   setEditVal(chars.join(""));
                 }} style={{
                   width: 20, height: 24, border: `1px solid ${active ? C.yellowHeavy : C.brownLight}`,
-                  borderRadius: 3, cursor: "pointer", fontSize: 10, fontFamily: MONO,
+                  borderRadius: 3, cursor: "pointer", fontSize: 10, fontFamily: FONT,
                   fontWeight: active ? 700 : 400,
                   background: active ? C.yellowLight : C.white,
                   color: active ? C.yellowHeavy : C.textMuted,
@@ -9978,7 +9978,7 @@ function ScheduleTableTab() {
 
     return (
       <td style={{ ...cellStyle, cursor: "pointer" }} onDoubleClick={() => startEdit(row.key, "dowZStr", row.dowZStr)} title="Double-click to edit days">
-        <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: 2, color: C.brownDark }}>{row.dowZStr}</span>
+        <span style={{ fontFamily: FONT, fontSize: 11, letterSpacing: 2, color: C.brownDark }}>{row.dowZStr}</span>
       </td>
     );
   }
@@ -10222,7 +10222,7 @@ function ScheduleTableTab() {
       }}>
         <span style={{ fontSize: 11, fontWeight: 600, color: C.textSoft, textTransform: "uppercase", letterSpacing: 0.5 }}>Key:</span>
         <span style={{ fontSize: 11, color: C.textSoft }}>
-          DOW: <span style={{ fontFamily: MONO, background: C.brownPale, color: C.brownDark, padding: "1px 6px", borderRadius: 3 }}>1234567</span> = Mon–Sun · <span style={{ fontFamily: MONO, color: C.textMuted }}>.</span> = not operating
+          DOW: <span style={{ fontFamily: FONT, background: C.brownPale, color: C.brownDark, padding: "1px 6px", borderRadius: 3 }}>1234567</span> = Mon–Sun · <span style={{ fontFamily: FONT, color: C.textMuted }}>.</span> = not operating
         </span>
         <span style={{ fontSize: 11, color: C.textSoft }}>
           <span style={{ background: C.brownPale, color: C.brownDark, fontWeight: 700, padding: "1px 6px", borderRadius: 3, fontSize: 10 }}>+1</span> = next calendar day
@@ -10329,21 +10329,21 @@ function ScheduleTableTab() {
                         setSelectedRows(next);
                       }} />
                   </td>
-                  <EditableCell row={r} field="flightNum" display={<span style={{ fontFamily: MONO, fontWeight: 700, color: C.brownDark }}>{r.flightNum}</span>} style={td()} />
-                  <EditableCell row={r} field="tail" display={<span style={{ fontFamily: MONO, fontSize: 11, color: C.textSoft }}>{r.tail}</span>} style={td()} />
+                  <EditableCell row={r} field="flightNum" display={<span style={{ fontFamily: FONT, fontWeight: 700, color: C.brownDark }}>{r.flightNum}</span>} style={td()} />
+                  <EditableCell row={r} field="tail" display={<span style={{ fontFamily: FONT, fontSize: 11, color: C.textSoft }}>{r.tail}</span>} style={td()} />
                   <EditableCell row={r} field="route" display={<><span style={{ fontWeight: 700 }}>{r.orig}</span><span style={{ color: C.textMuted }}> — </span><span style={{ fontWeight: 700 }}>{r.dest}</span></>} style={td()} />
                   <DOWCell row={r} bg={zuluBg} />
-                  <EditableCell row={r} field="stdZ" display={<span style={{ fontFamily: MONO, fontWeight: 700, fontSize: 13 }}>{r.stdZ}</span>} style={td(zuluBg)} />
-                  <td style={{ ...td(zuluBg), fontFamily: MONO, fontWeight: 700, fontSize: 13 }}>{r.staZ}</td>
+                  <EditableCell row={r} field="stdZ" display={<span style={{ fontFamily: FONT, fontWeight: 700, fontSize: 13 }}>{r.stdZ}</span>} style={td(zuluBg)} />
+                  <td style={{ ...td(zuluBg), fontFamily: FONT, fontWeight: 700, fontSize: 13 }}>{r.staZ}</td>
                   <td style={td(zuluBg)}>
                     {r.p1Z > 0 && <span style={{ background: C.textSoft, color: C.yellow, fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4 }}>+{r.p1Z}</span>}
                     {r.p1Z < 0 && <span style={{ background: "#C62828", color: "#FFFFFF", fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4 }}>{r.p1Z}</span>}
                   </td>
                   <td style={td(localBg)}>
-                    <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: 2, color: C.yellowHeavy }}>{r.dowLStr}</span>
+                    <span style={{ fontFamily: FONT, fontSize: 11, letterSpacing: 2, color: C.yellowHeavy }}>{r.dowLStr}</span>
                   </td>
-                  <td style={{ ...td(localBg), fontFamily: MONO, fontWeight: 700, fontSize: 13 }}>{r.stdL}</td>
-                  <td style={{ ...td(localBg), fontFamily: MONO, fontWeight: 700, fontSize: 13 }}>{r.staL}</td>
+                  <td style={{ ...td(localBg), fontFamily: FONT, fontWeight: 700, fontSize: 13 }}>{r.stdL}</td>
+                  <td style={{ ...td(localBg), fontFamily: FONT, fontWeight: 700, fontSize: 13 }}>{r.staL}</td>
                   <td style={td(localBg)}>
                     {r.p1L > 0 && <span style={{ background: C.yellowHeavy, color: "#FFFFFF", fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4 }}>+{r.p1L}</span>}
                     {r.p1L < 0 && <span style={{ background: "#C62828", color: "#FFFFFF", fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4 }}>{r.p1L}</span>}
@@ -10393,13 +10393,13 @@ function ScheduleTableTab() {
               <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
                 <div style={{ flex: 1 }}>
                   <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Dep</label>
-                  <input style={{ ...iStyle, fontFamily: MONO, textTransform: "uppercase", letterSpacing: 1 }} placeholder="LGG" maxLength={4} value={m.depApt || ""}
+                  <input style={{ ...iStyle, fontFamily: FONT, textTransform: "uppercase", letterSpacing: 1 }} placeholder="LGG" maxLength={4} value={m.depApt || ""}
                     onChange={e => setSchedEditModal({ ...m, depApt: e.target.value.toUpperCase() })} />
                 </div>
                 <div style={{ display: "flex", alignItems: "center", paddingTop: 14, color: C.textMuted, fontSize: 14 }}>→</div>
                 <div style={{ flex: 1 }}>
                   <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Arr</label>
-                  <input style={{ ...iStyle, fontFamily: MONO, textTransform: "uppercase", letterSpacing: 1 }} placeholder="JFK" maxLength={4} value={m.arrApt || ""}
+                  <input style={{ ...iStyle, fontFamily: FONT, textTransform: "uppercase", letterSpacing: 1 }} placeholder="JFK" maxLength={4} value={m.arrApt || ""}
                     onChange={e => setSchedEditModal({ ...m, arrApt: e.target.value.toUpperCase() })} />
                 </div>
               </div>
@@ -10468,7 +10468,7 @@ function ScheduleTableTab() {
                   <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
                     <div style={{ width: 100 }}>
                       <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Block Time</label>
-                      <input style={{ ...iStyle, fontFamily: MONO, fontWeight: 700, color: isOverridden ? C.yellowHeavy : C.brownDark }}
+                      <input style={{ ...iStyle, fontFamily: FONT, fontWeight: 700, color: isOverridden ? C.yellowHeavy : C.brownDark }}
                         type="time" value={`${blockHH}:${blockMM}`}
                         onChange={e => {
                           const [hh, mm] = e.target.value.split(":").map(Number);
@@ -10678,14 +10678,14 @@ function RouteCalculatorTab() {
       <div style={{ display: "flex", gap: 12, alignItems: "flex-end", marginBottom: 20, flexWrap: "wrap" }}>
         <div>
           <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Departure</label>
-          <input style={{ ...iStyle, width: 90, fontFamily: MONO, textTransform: "uppercase", letterSpacing: 1, fontSize: 14 }}
+          <input style={{ ...iStyle, width: 90, fontFamily: FONT, textTransform: "uppercase", letterSpacing: 1, fontSize: 14 }}
             placeholder="LGG" maxLength={4} value={depCode}
             onChange={e => setDepCode(e.target.value.toUpperCase())} />
         </div>
         <span style={{ fontSize: 18, color: C.textMuted, paddingBottom: 6 }}>→</span>
         <div>
           <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Arrival</label>
-          <input style={{ ...iStyle, width: 90, fontFamily: MONO, textTransform: "uppercase", letterSpacing: 1, fontSize: 14 }}
+          <input style={{ ...iStyle, width: 90, fontFamily: FONT, textTransform: "uppercase", letterSpacing: 1, fontSize: 14 }}
             placeholder="JFK" maxLength={4} value={arrCode}
             onChange={e => setArrCode(e.target.value.toUpperCase())} />
         </div>
@@ -10733,7 +10733,7 @@ function RouteCalculatorTab() {
                 padding: "14px 16px", borderRadius: 10, background: C.white,
                 border: `1px solid ${C.brownLight}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
               }}>
-                <div style={{ fontSize: 20, fontWeight: 700, color: C.brownDark, fontFamily: MONO }}>{k.value}</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: C.brownDark, fontFamily: FONT }}>{k.value}</div>
                 <div style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.5, marginTop: 4 }}>{k.label}</div>
                 <div style={{ fontSize: 10, color: C.textSoft, marginTop: 2 }}>{k.sub}</div>
               </div>
@@ -10754,11 +10754,11 @@ function RouteCalculatorTab() {
                 <tbody>
                   {tableMatch.allMatches.map((m, i) => (
                     <tr key={i} style={{ background: m.aoc === tableMatch.aoc ? C.yellowLight : i % 2 === 0 ? C.white : C.offWhite }}>
-                      <td style={{ padding: "6px 12px", fontSize: 12, fontWeight: 700, fontFamily: MONO, borderBottom: `1px solid ${C.offWhite2}` }}>{m.aoc || "—"}</td>
-                      <td style={{ padding: "6px 12px", fontSize: 12, fontFamily: MONO, borderBottom: `1px solid ${C.offWhite2}`, fontWeight: season === "W" ? 700 : 400 }}>{m.W}</td>
-                      <td style={{ padding: "6px 12px", fontSize: 12, fontFamily: MONO, borderBottom: `1px solid ${C.offWhite2}`, fontWeight: season === "S" ? 700 : 400 }}>{m.S}</td>
-                      <td style={{ padding: "6px 12px", fontSize: 12, fontFamily: MONO, borderBottom: `1px solid ${C.offWhite2}` }}>{fmtNum(m.payloadW, 0)}</td>
-                      <td style={{ padding: "6px 12px", fontSize: 12, fontFamily: MONO, borderBottom: `1px solid ${C.offWhite2}` }}>{fmtNum(m.payloadS, 0)}</td>
+                      <td style={{ padding: "6px 12px", fontSize: 12, fontWeight: 700, fontFamily: FONT, borderBottom: `1px solid ${C.offWhite2}` }}>{m.aoc || "—"}</td>
+                      <td style={{ padding: "6px 12px", fontSize: 12, fontFamily: FONT, borderBottom: `1px solid ${C.offWhite2}`, fontWeight: season === "W" ? 700 : 400 }}>{m.W}</td>
+                      <td style={{ padding: "6px 12px", fontSize: 12, fontFamily: FONT, borderBottom: `1px solid ${C.offWhite2}`, fontWeight: season === "S" ? 700 : 400 }}>{m.S}</td>
+                      <td style={{ padding: "6px 12px", fontSize: 12, fontFamily: FONT, borderBottom: `1px solid ${C.offWhite2}` }}>{fmtNum(m.payloadW, 0)}</td>
+                      <td style={{ padding: "6px 12px", fontSize: 12, fontFamily: FONT, borderBottom: `1px solid ${C.offWhite2}` }}>{fmtNum(m.payloadS, 0)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -10784,7 +10784,7 @@ function RouteCalculatorTab() {
               padding: "14px 16px", borderRadius: 10, background: C.white,
               border: `1px solid ${C.brownLight}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
             }}>
-              <div style={{ fontSize: 20, fontWeight: 700, color: C.brownDark, fontFamily: MONO }}>{k.value}</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: C.brownDark, fontFamily: FONT }}>{k.value}</div>
               <div style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.5, marginTop: 4 }}>{k.label}</div>
               <div style={{ fontSize: 10, color: C.textSoft, marginTop: 2 }}>{k.sub}</div>
             </div>
@@ -11054,9 +11054,9 @@ function RouteCalculatorTab() {
               border: `1px solid ${C.brownLight}`, fontSize: 11, lineHeight: 1.7,
             }}>
               <div style={{ fontWeight: 700, color: C.brownDark, marginBottom: 4 }}>Block Time Model ({season === "W" ? "Winter" : "Summer"} · {currentDir})</div>
-              <div style={{ fontFamily: MONO, fontSize: 10 }}>Block = ({m.slope.toFixed(6)} × GCD + {m.intercept.toFixed(1)}) × dir × wind</div>
-              <div style={{ fontFamily: MONO, fontSize: 10, marginTop: 2 }}>× direction factor (1 + {dk ? `${m[dk]}` : "0"} × dist/10000)</div>
-              <div style={{ fontFamily: MONO, fontSize: 10, marginTop: 2 }}>× wind correction (by region pair)</div>
+              <div style={{ fontFamily: FONT, fontSize: 10 }}>Block = ({m.slope.toFixed(6)} × GCD + {m.intercept.toFixed(1)}) × dir × wind</div>
+              <div style={{ fontFamily: FONT, fontSize: 10, marginTop: 2 }}>× direction factor (1 + {dk ? `${m[dk]}` : "0"} × dist/10000)</div>
+              <div style={{ fontFamily: FONT, fontSize: 10, marginTop: 2 }}>× wind correction (by region pair)</div>
               <div style={{ color: C.textMuted, marginTop: 2 }}>{m.n} data points · Rounded to 5 min</div>
             </div>
             <div style={{
@@ -11064,10 +11064,10 @@ function RouteCalculatorTab() {
               border: `1px solid ${C.brownLight}`, fontSize: 11, lineHeight: 1.7,
             }}>
               <div style={{ fontWeight: 700, color: C.brownDark, marginBottom: 4 }}>Payload Model (fuel-burn based)</div>
-              <div style={{ fontFamily: MONO, fontSize: 10 }}>
+              <div style={{ fontFamily: FONT, fontSize: 10 }}>
                 Fuel P75 = {FUEL_MODEL.a} × block² + {FUEL_MODEL.b} × block + {FUEL_MODEL.c}
               </div>
-              <div style={{ fontFamily: MONO, fontSize: 10, marginTop: 2 }}>
+              <div style={{ fontFamily: FONT, fontSize: 10, marginTop: 2 }}>
                 Max payload = min({fmtKg(FUEL_MODEL.structMax)}, {fmtKg(FUEL_MODEL.capacity)} − fuel)
               </div>
               <div style={{ color: C.textMuted, marginTop: 2 }}>Derived from {fmtNum(FUEL_MODEL.n, 0)} B777F flights (P75 fuel burn by block time)</div>
@@ -11365,7 +11365,7 @@ function BlockTimeTab() {
               const renderChildEditRow = (row) => (
                 <tr key={row.id + "-cedit"} style={{ background: C.warnLight }}>
                   <td style={{ ...tdS, paddingLeft: 30 }}>
-                    <input style={{ ...iStyle, width: 90, fontFamily: MONO }} value={editing.flightNum || ""} placeholder="e.g. CP 101"
+                    <input style={{ ...iStyle, width: 90, fontFamily: FONT }} value={editing.flightNum || ""} placeholder="e.g. CP 101"
                       onChange={e => setEditing({ ...editing, flightNum: e.target.value.toUpperCase() })} />
                   </td>
                   <td style={{ ...tdS, color: C.textMuted, fontSize: 10 }}>{row.aoc}</td>
@@ -11397,7 +11397,7 @@ function BlockTimeTab() {
                 const activeStyle = { textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 3, fontWeight: 700 };
                 return (
                   <tr key={row.id} style={{ background: bg }}>
-                    <td style={{ ...tdS, fontWeight: isChild ? 500 : 700, color: isChild ? C.textSoft : C.brownDark, fontFamily: MONO, paddingLeft: isChild ? 30 : 14 }}>
+                    <td style={{ ...tdS, fontWeight: isChild ? 500 : 700, color: isChild ? C.textSoft : C.brownDark, fontFamily: FONT, paddingLeft: isChild ? 30 : 14 }}>
                       {isChild ? (
                         <span style={{ fontSize: 11 }}>└ {row.flightNum}</span>
                       ) : (
@@ -11432,10 +11432,10 @@ function BlockTimeTab() {
                       </td>
                       <td style={{ ...tdS, color: activeSeason === "W" ? C.text : C.textMuted, ...(activeW === "perf" && activeSeason === "W" ? activeStyle : {}) }}>{row.W}</td>
                       <td style={{ ...tdS, color: activeSeason === "S" ? C.text : C.textMuted, ...(activeS === "perf" && activeSeason === "S" ? activeStyle : {}) }}>{row.S}</td>
-                      <td style={{ ...tdS, fontFamily: MONO, fontWeight: (row.opW > 0 && activeSeason === "W") ? 700 : 400, color: activeSeason === "W" ? (row.opW > 0 ? "#1B365D" : C.textMuted) : C.textMuted, background: (row.opW > 0 && activeSeason === "W") ? "#E8F0FE" : "transparent", ...(activeW === "ops" && activeSeason === "W" ? activeStyle : {}) }}>{row.opW > 0 ? row.opW : "—"}</td>
-                      <td style={{ ...tdS, fontFamily: MONO, fontWeight: (row.opS > 0 && activeSeason === "S") ? 700 : 400, color: activeSeason === "S" ? (row.opS > 0 ? "#92700E" : C.textMuted) : C.textMuted, background: (row.opS > 0 && activeSeason === "S") ? "#FFF8E1" : "transparent", ...(activeS === "ops" && activeSeason === "S" ? activeStyle : {}) }}>{row.opS > 0 ? row.opS : "—"}</td>
-                      <td style={{ ...tdS, fontFamily: MONO, color: activeSeason === "W" ? C.text : C.textMuted }}>{row.payloadW > 0 ? fmtKg(row.payloadW) : "—"}</td>
-                      <td style={{ ...tdS, fontFamily: MONO, color: activeSeason === "S" ? C.text : C.textMuted }}>{row.payloadS > 0 ? fmtKg(row.payloadS) : "—"}</td>
+                      <td style={{ ...tdS, fontFamily: FONT, fontWeight: (row.opW > 0 && activeSeason === "W") ? 700 : 400, color: activeSeason === "W" ? (row.opW > 0 ? "#1B365D" : C.textMuted) : C.textMuted, background: (row.opW > 0 && activeSeason === "W") ? "#E8F0FE" : "transparent", ...(activeW === "ops" && activeSeason === "W" ? activeStyle : {}) }}>{row.opW > 0 ? row.opW : "—"}</td>
+                      <td style={{ ...tdS, fontFamily: FONT, fontWeight: (row.opS > 0 && activeSeason === "S") ? 700 : 400, color: activeSeason === "S" ? (row.opS > 0 ? "#92700E" : C.textMuted) : C.textMuted, background: (row.opS > 0 && activeSeason === "S") ? "#FFF8E1" : "transparent", ...(activeS === "ops" && activeSeason === "S" ? activeStyle : {}) }}>{row.opS > 0 ? row.opS : "—"}</td>
+                      <td style={{ ...tdS, fontFamily: FONT, color: activeSeason === "W" ? C.text : C.textMuted }}>{row.payloadW > 0 ? fmtKg(row.payloadW) : "—"}</td>
+                      <td style={{ ...tdS, fontFamily: FONT, color: activeSeason === "S" ? C.text : C.textMuted }}>{row.payloadS > 0 ? fmtKg(row.payloadS) : "—"}</td>
                       <td style={tdS}>
                         {row.estimated ? (
                           confirmRow?.id === row.id ? null : <PrimaryBtn onClick={() => setConfirmRow({ ...row })} style={{ padding: "4px 10px", fontSize: 10 }}>Confirm</PrimaryBtn>
@@ -11453,7 +11453,7 @@ function BlockTimeTab() {
                 return (
                 <tr key={parentRoute + parentAoc + "-addov"} style={{ background: C.offWhite2 }}>
                   <td style={{ ...tdS, paddingLeft: 30 }}>
-                    <input style={{ ...iStyle, width: 90, fontFamily: MONO }} placeholder="e.g. CP 101" autoFocus
+                    <input style={{ ...iStyle, width: 90, fontFamily: FONT }} placeholder="e.g. CP 101" autoFocus
                       value={overrideRow.flightNum} onChange={e => setOverrideRow({ ...overrideRow, flightNum: e.target.value.toUpperCase() })}
                       onKeyDown={e => e.key === "Enter" && commitOverride(parentRoute, parentAoc)} />
                   </td>
@@ -11498,7 +11498,7 @@ function BlockTimeTab() {
                     const activeStyle = { textDecoration: "underline", textDecorationStyle: "dotted", textUnderlineOffset: 3, fontWeight: 700 };
                     rows.push(
                       <tr key={p.id} style={{ background: bg }}>
-                        <td style={{ ...tdS, fontWeight: 700, color: C.brownDark, fontFamily: MONO, cursor: "pointer", paddingLeft: 6 }}
+                        <td style={{ ...tdS, fontWeight: 700, color: C.brownDark, fontFamily: FONT, cursor: "pointer", paddingLeft: 6 }}
                           onClick={() => toggleExpand(rKey)} title="Click to expand and manage flight number overrides">
                           <span style={{ display: "inline-block", width: 20, textAlign: "center", fontSize: 12, color: isExpanded ? C.brownDark : C.textMuted, transition: "color 0.15s" }}>{isExpanded ? "\u25BE" : "\u25B8"}</span>
                           {p.route}
@@ -11511,10 +11511,10 @@ function BlockTimeTab() {
                         <td style={tdS}>{p.aoc && <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 3, fontFamily: FONT, background: p.aoc === "CP" ? AOC_DEFS.MSC.bg : AOC_DEFS.ATLAS.bg, color: p.aoc === "CP" ? "#325854" : "#1B365D" }}>{p.aoc}</span>}</td>
                         <td style={{ ...tdS, color: activeSeason === "W" ? C.text : C.textMuted, ...(activeW === "perf" && activeSeason === "W" ? activeStyle : {}) }}>{p.W}</td>
                         <td style={{ ...tdS, color: activeSeason === "S" ? C.text : C.textMuted, ...(activeS === "perf" && activeSeason === "S" ? activeStyle : {}) }}>{p.S}</td>
-                        <td style={{ ...tdS, fontFamily: MONO, fontWeight: (p.opW > 0 && activeSeason === "W") ? 700 : 400, color: activeSeason === "W" ? (p.opW > 0 ? "#1B365D" : C.textMuted) : C.textMuted, background: (p.opW > 0 && activeSeason === "W") ? "#E8F0FE" : "transparent", ...(activeW === "ops" && activeSeason === "W" ? activeStyle : {}) }}>{p.opW > 0 ? p.opW : "—"}</td>
-                        <td style={{ ...tdS, fontFamily: MONO, fontWeight: (p.opS > 0 && activeSeason === "S") ? 700 : 400, color: activeSeason === "S" ? (p.opS > 0 ? "#92700E" : C.textMuted) : C.textMuted, background: (p.opS > 0 && activeSeason === "S") ? "#FFF8E1" : "transparent", ...(activeS === "ops" && activeSeason === "S" ? activeStyle : {}) }}>{p.opS > 0 ? p.opS : "—"}</td>
-                        <td style={{ ...tdS, fontFamily: MONO, color: activeSeason === "W" ? C.text : C.textMuted }}>{p.payloadW > 0 ? fmtKg(p.payloadW) : "—"}</td>
-                        <td style={{ ...tdS, fontFamily: MONO, color: activeSeason === "S" ? C.text : C.textMuted }}>{p.payloadS > 0 ? fmtKg(p.payloadS) : "—"}</td>
+                        <td style={{ ...tdS, fontFamily: FONT, fontWeight: (p.opW > 0 && activeSeason === "W") ? 700 : 400, color: activeSeason === "W" ? (p.opW > 0 ? "#1B365D" : C.textMuted) : C.textMuted, background: (p.opW > 0 && activeSeason === "W") ? "#E8F0FE" : "transparent", ...(activeW === "ops" && activeSeason === "W" ? activeStyle : {}) }}>{p.opW > 0 ? p.opW : "—"}</td>
+                        <td style={{ ...tdS, fontFamily: FONT, fontWeight: (p.opS > 0 && activeSeason === "S") ? 700 : 400, color: activeSeason === "S" ? (p.opS > 0 ? "#92700E" : C.textMuted) : C.textMuted, background: (p.opS > 0 && activeSeason === "S") ? "#FFF8E1" : "transparent", ...(activeS === "ops" && activeSeason === "S" ? activeStyle : {}) }}>{p.opS > 0 ? p.opS : "—"}</td>
+                        <td style={{ ...tdS, fontFamily: FONT, color: activeSeason === "W" ? C.text : C.textMuted }}>{p.payloadW > 0 ? fmtKg(p.payloadW) : "—"}</td>
+                        <td style={{ ...tdS, fontFamily: FONT, color: activeSeason === "S" ? C.text : C.textMuted }}>{p.payloadS > 0 ? fmtKg(p.payloadS) : "—"}</td>
                         <td style={tdS}>
                           <GhostBtn onClick={(e) => { e.stopPropagation(); setEditing({ ...p }); }}>Edit</GhostBtn>
                         </td>
@@ -11528,7 +11528,7 @@ function BlockTimeTab() {
                   const ri = rowIdx++;
                   rows.push(
                     <tr key={rKey + "-hdr"} style={{ background: ri % 2 === 0 ? C.white : C.offWhite }}>
-                      <td style={{ ...tdS, fontWeight: 700, color: C.brownDark, fontFamily: MONO, cursor: "pointer" }}
+                      <td style={{ ...tdS, fontWeight: 700, color: C.brownDark, fontFamily: FONT, cursor: "pointer" }}
                         onClick={() => toggleExpand(rKey)}>
                         <span style={{ fontSize: 10, marginRight: 4, color: C.textMuted }}>{isExpanded ? "\u25BE" : "\u25B8"}</span>
                         {rKey.split("|")[0]}
@@ -11845,7 +11845,7 @@ function AirportsTab() {
                   </>
                 ) : (
                   <>
-                    <td style={{ ...tdS, fontWeight: 700, color: C.brownDark, fontFamily: MONO }}>{ap.code}</td>
+                    <td style={{ ...tdS, fontWeight: 700, color: C.brownDark, fontFamily: FONT }}>{ap.code}</td>
                     <td style={tdS}>{ap.name}</td>
                     <td style={{ ...tdS, color: activeSeason === "W" ? C.text : C.textMuted }}>
                       <Badge color={C.brownDark} bg={activeSeason === "W" ? C.brownPale : C.offWhite2}>{offsetLabel(ap.utcOffset)}</Badge>
@@ -11856,8 +11856,8 @@ function AirportsTab() {
                         <span style={{ fontSize: 9, color: C.textMuted, marginLeft: 4 }}>DST</span>
                       )}
                     </td>
-                    <td style={{ ...tdS, fontFamily: MONO, fontSize: 11, color: C.textMuted }}>{ap.lat != null ? ap.lat.toFixed(2) : "—"}</td>
-                    <td style={{ ...tdS, fontFamily: MONO, fontSize: 11, color: C.textMuted }}>{ap.lon != null ? ap.lon.toFixed(2) : "—"}</td>
+                    <td style={{ ...tdS, fontFamily: FONT, fontSize: 11, color: C.textMuted }}>{ap.lat != null ? ap.lat.toFixed(2) : "—"}</td>
+                    <td style={{ ...tdS, fontFamily: FONT, fontSize: 11, color: C.textMuted }}>{ap.lon != null ? ap.lon.toFixed(2) : "—"}</td>
                     {ap.depOpen == null && ap.depClose == null && ap.arrOpen == null && ap.arrClose == null ? (
                       <td colSpan={4} style={{ ...tdS, textAlign: "center" }}><Badge color={C.success} bg={C.successLight}>24/7</Badge></td>
                     ) : (<>
@@ -12384,7 +12384,7 @@ function SSIMTab() {
               border: `1px solid ${C.brownLight}`,
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                <span style={{ fontFamily: MONO, fontWeight: 700, fontSize: 13, color: C.brownDark }}>{ac.reg}</span>
+                <span style={{ fontFamily: FONT, fontWeight: 700, fontSize: 13, color: C.brownDark }}>{ac.reg}</span>
                 <span style={{ fontSize: 10, color: C.textMuted }}>
                   {flights.filter(f => f.acId === ac.id).length} flights this week
                 </span>
@@ -12405,7 +12405,7 @@ function SSIMTab() {
               </div>
               {acTypeMap[ac.id] && acTypeMap[ac.id] !== "___" && (
                 <div style={{ fontSize: 10, color: C.textMuted, marginTop: 6 }}>
-                  SSIM field: <span style={{ fontFamily: MONO, color: C.text }}>{acTypeMap[ac.id]}</span>
+                  SSIM field: <span style={{ fontFamily: FONT, color: C.text }}>{acTypeMap[ac.id]}</span>
                 </div>
               )}
             </div>
@@ -12427,7 +12427,7 @@ function SSIMTab() {
               background: C.white, borderRadius: 8, padding: "12px 14px",
               border: `1px solid ${C.brownLight}`, textAlign: "center",
             }}>
-              <div style={{ fontSize: 22, fontWeight: 700, color: C.brownDark, fontFamily: MONO }}>{k.v}</div>
+              <div style={{ fontSize: 22, fontWeight: 700, color: C.brownDark, fontFamily: FONT }}>{k.v}</div>
               <div style={{ fontSize: 10, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.4, marginTop: 2 }}>{k.l}</div>
             </div>
           ))}
@@ -12445,7 +12445,7 @@ function SSIMTab() {
               Preview (first 8 lines)
             </div>
             <pre style={{
-              background: C.brownDark, color: C.yellow, fontFamily: MONO, fontSize: 10,
+              background: C.brownDark, color: C.yellow, fontFamily: FONT, fontSize: 10,
               padding: "14px 16px", borderRadius: 8, overflowX: "auto",
               lineHeight: 1.7, margin: 0, whiteSpace: "pre",
             }}>{preview}</pre>
@@ -12479,7 +12479,7 @@ function SSIMTab() {
             onChange={e => { setImportText(e.target.value); setImportPreview(null); setImportResult(null); }}
             placeholder="Paste SSIM content here..."
             style={{
-              width: "100%", minHeight: 140, fontFamily: MONO, fontSize: 10,
+              width: "100%", minHeight: 140, fontFamily: FONT, fontSize: 10,
               background: C.offWhite, border: `1px solid ${C.brownLight}`,
               borderRadius: 8, padding: 14, resize: "vertical",
               lineHeight: 1.6, color: C.text,
@@ -12523,7 +12523,7 @@ function SSIMTab() {
                   { v: importPreview.errors.length, l: "Errors", bg: importPreview.errors.length ? C.dangerLight : C.white, bdr: importPreview.errors.length ? C.danger : C.brownLight, col: importPreview.errors.length ? C.danger : C.textMuted },
                 ].map((k, i) => (
                   <div key={i} style={{ background: k.bg, borderRadius: 8, padding: "12px 14px", border: `1px solid ${k.bdr}`, textAlign: "center" }}>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: k.col, fontFamily: MONO }}>{k.v}</div>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: k.col, fontFamily: FONT }}>{k.v}</div>
                     <div style={{ fontSize: 10, color: C.textSoft, textTransform: "uppercase", letterSpacing: 0.4, marginTop: 2 }}>{k.l}</div>
                   </div>
                 ))}
@@ -12549,10 +12549,10 @@ function SSIMTab() {
                     <tbody>
                       {importPreview.imported.slice(0, 50).map((f, i) => (
                         <tr key={i} style={{ borderBottom: `1px solid ${C.offWhite2}` }}>
-                          <td style={{ padding: "6px 10px", fontFamily: MONO, fontWeight: 700 }}>{f.flightNum}</td>
-                          <td style={{ padding: "6px 10px", fontFamily: MONO }}>{f.route}</td>
+                          <td style={{ padding: "6px 10px", fontFamily: FONT, fontWeight: 700 }}>{f.flightNum}</td>
+                          <td style={{ padding: "6px 10px", fontFamily: FONT }}>{f.route}</td>
                           <td style={{ padding: "6px 10px" }}>{DAY_NAMES[f.day - 1]}</td>
-                          <td style={{ padding: "6px 10px", fontFamily: MONO }}>{toHHMM(f.dep)}</td>
+                          <td style={{ padding: "6px 10px", fontFamily: FONT }}>{toHHMM(f.dep)}</td>
                           <td style={{ padding: "6px 10px" }}>{f.block}m</td>
                           <td style={{ padding: "6px 10px" }}>{FLIGHT_TYPES[f.type]?.label || f.type}</td>
                         </tr>
@@ -12940,9 +12940,9 @@ function FeasibilityTab() {
                       <Badge color={sv.color} bg={sv.bg}>{sv.label}</Badge>
                     </td>
                     <td style={{ ...tdS, fontWeight: 600 }}>{issue.category}</td>
-                    <td style={{ ...tdS, fontFamily: MONO, fontWeight: 700, fontSize: 11 }}>{issue.reg}</td>
-                    <td style={{ ...tdS, fontFamily: MONO, fontSize: 11 }}>{issue.flightNum || "—"}</td>
-                    <td style={{ ...tdS, fontFamily: MONO, fontSize: 11 }}>{issue.route}</td>
+                    <td style={{ ...tdS, fontFamily: FONT, fontWeight: 700, fontSize: 11 }}>{issue.reg}</td>
+                    <td style={{ ...tdS, fontFamily: FONT, fontSize: 11 }}>{issue.flightNum || "—"}</td>
+                    <td style={{ ...tdS, fontFamily: FONT, fontSize: 11 }}>{issue.route}</td>
                     <td style={{ ...tdS, textAlign: "center" }}>{DAY_NAMES[(issue.day || 1) - 1]}</td>
                     <td style={{ ...tdS, fontSize: 10, color: C.textSoft }}>{issue.detail}</td>
                   </tr>
@@ -13006,12 +13006,12 @@ function FeasibilityTab() {
                 <tbody>
                   {restricted.map((ap, idx) => (
                     <tr key={ap.code} style={{ background: idx % 2 === 0 ? C.white : C.offWhite }}>
-                      <td style={{ ...tdC, fontWeight: 700, fontFamily: MONO, color: C.brownDark }}>{ap.code}</td>
+                      <td style={{ ...tdC, fontWeight: 700, fontFamily: FONT, color: C.brownDark }}>{ap.code}</td>
                       <td style={tdC}>{ap.name}</td>
-                      <td style={{ ...tdC, fontFamily: MONO }}>{ap.depOpen != null ? toHHMM(ap.depOpen) : "—"}</td>
-                      <td style={{ ...tdC, fontFamily: MONO }}>{ap.depClose != null ? toHHMM(ap.depClose) : "—"}</td>
-                      <td style={{ ...tdC, fontFamily: MONO }}>{ap.arrOpen != null ? toHHMM(ap.arrOpen) : "—"}</td>
-                      <td style={{ ...tdC, fontFamily: MONO }}>{ap.arrClose != null ? toHHMM(ap.arrClose) : "—"}</td>
+                      <td style={{ ...tdC, fontFamily: FONT }}>{ap.depOpen != null ? toHHMM(ap.depOpen) : "—"}</td>
+                      <td style={{ ...tdC, fontFamily: FONT }}>{ap.depClose != null ? toHHMM(ap.depClose) : "—"}</td>
+                      <td style={{ ...tdC, fontFamily: FONT }}>{ap.arrOpen != null ? toHHMM(ap.arrOpen) : "—"}</td>
+                      <td style={{ ...tdC, fontFamily: FONT }}>{ap.arrClose != null ? toHHMM(ap.arrClose) : "—"}</td>
                       <td style={{ ...tdC, fontSize: 9, color: C.textMuted, fontStyle: "italic" }}>{ap.notes || ""}</td>
                     </tr>
                   ))}
@@ -13404,14 +13404,14 @@ function CompareTab() {
                       <td style={tdS}>
                         <span style={{ background: ss.badge.bg, color: ss.badge.color, fontSize: 8, fontWeight: 700, padding: "2px 6px", borderRadius: 3, letterSpacing: 0.4 }}>{ss.badge.label}</span>
                       </td>
-                      <td style={{ ...tdS, fontFamily: MONO, fontWeight: 700, fontSize: 11 }}>{f.flightNum || "—"}</td>
-                      <td style={{ ...tdS, fontFamily: MONO, fontSize: 10 }}>{f.tail}</td>
-                      <td style={{ ...tdS, fontFamily: MONO, fontWeight: 600, fontSize: 11 }}>{orig}</td>
-                      <td style={{ ...tdS, fontFamily: MONO, fontWeight: 600, fontSize: 11 }}>{dest}</td>
-                      <td style={{ ...tdS, fontFamily: MONO, fontSize: 10, textAlign: "center" }}>{dayNames[(f.day - 1) % 7]}</td>
-                      <td style={{ ...tdS, fontFamily: MONO, fontWeight: 700, fontSize: 11 }}>{toHHMM(f.dep)}</td>
-                      <td style={{ ...tdS, fontFamily: MONO, fontWeight: 700, fontSize: 11 }}>{toHHMM(sta)}</td>
-                      <td style={{ ...tdS, fontFamily: MONO, fontSize: 10, textAlign: "center", color: p1 > 0 ? C.yellowHeavy : C.textMuted }}>{p1 > 0 ? `+${p1}` : ""}</td>
+                      <td style={{ ...tdS, fontFamily: FONT, fontWeight: 700, fontSize: 11 }}>{f.flightNum || "—"}</td>
+                      <td style={{ ...tdS, fontFamily: FONT, fontSize: 10 }}>{f.tail}</td>
+                      <td style={{ ...tdS, fontFamily: FONT, fontWeight: 600, fontSize: 11 }}>{orig}</td>
+                      <td style={{ ...tdS, fontFamily: FONT, fontWeight: 600, fontSize: 11 }}>{dest}</td>
+                      <td style={{ ...tdS, fontFamily: FONT, fontSize: 10, textAlign: "center" }}>{dayNames[(f.day - 1) % 7]}</td>
+                      <td style={{ ...tdS, fontFamily: FONT, fontWeight: 700, fontSize: 11 }}>{toHHMM(f.dep)}</td>
+                      <td style={{ ...tdS, fontFamily: FONT, fontWeight: 700, fontSize: 11 }}>{toHHMM(sta)}</td>
+                      <td style={{ ...tdS, fontFamily: FONT, fontSize: 10, textAlign: "center", color: p1 > 0 ? C.yellowHeavy : C.textMuted }}>{p1 > 0 ? `+${p1}` : ""}</td>
                       <td style={{ ...tdS, fontSize: 10, color: C.textSoft, lineHeight: 1.4 }}>
                         {r.changes.length > 0 ? r.changes.join("; ") : <span style={{ color: C.textMuted }}>—</span>}
                       </td>
@@ -13556,11 +13556,11 @@ function RotationTab() {
             onChange={() => toggleSelect(f.id)} style={{ cursor: "pointer" }} />
         </td>
         <td style={{ ...tdS, fontWeight: 600, fontSize: 10 }}>{DAY_LABELS[(f.day || 1) - 1]}</td>
-        <td style={{ ...tdS, fontFamily: MONO, fontWeight: 600 }}>{f.flightNum || "—"}</td>
-        <td style={{ ...tdS, fontFamily: MONO }}>{f.route || "—"}</td>
-        <td style={{ ...tdS, fontFamily: MONO, fontWeight: 700, fontSize: 10 }}>{f.ac?.reg || "—"}</td>
-        <td style={{ ...tdS, fontFamily: MONO, fontSize: 10 }}>{toHHMM(f.dep)}</td>
-        <td style={{ ...tdS, fontFamily: MONO, fontSize: 10 }}>{fmtBT(f.block)}</td>
+        <td style={{ ...tdS, fontFamily: FONT, fontWeight: 600 }}>{f.flightNum || "—"}</td>
+        <td style={{ ...tdS, fontFamily: FONT }}>{f.route || "—"}</td>
+        <td style={{ ...tdS, fontFamily: FONT, fontWeight: 700, fontSize: 10 }}>{f.ac?.reg || "—"}</td>
+        <td style={{ ...tdS, fontFamily: FONT, fontSize: 10 }}>{toHHMM(f.dep)}</td>
+        <td style={{ ...tdS, fontFamily: FONT, fontSize: 10 }}>{fmtBT(f.block)}</td>
         <td style={{ ...tdS, textAlign: "center" }}>
           {FLIGHT_TYPES[f.type] ? (
             <span style={{ padding: "2px 6px", borderRadius: 3, fontSize: 9, fontWeight: 700, background: FLIGHT_TYPES[f.type].bg, color: FLIGHT_TYPES[f.type].txt, border: `1px solid ${FLIGHT_TYPES[f.type].bdr}` }}>{f.type}</span>
@@ -14073,7 +14073,7 @@ function ManageAdminsModal({ onClose, currentEmail, adminEmails, isAdmin, onAdmi
                 fontSize: 11,
                 background: isConfirming ? C.warnLight : "transparent",
               }}>
-                <span style={{ flex: 1, fontFamily: MONO, color: C.text }}>
+                <span style={{ flex: 1, fontFamily: FONT, color: C.text }}>
                   {email}
                   {isSelf && <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, color: C.brownDark, padding: "1px 5px", background: C.offWhite2, borderRadius: 3 }}>YOU</span>}
                 </span>
@@ -14859,7 +14859,7 @@ function AppShell({ authEmail, onSignOut }) {
   // ── Stat chip helper ──────────────────────────────────────────────
   const StatChip = ({ label, value }) => (
     <span style={{
-      fontSize: 10, fontFamily: MONO, color: C.textMuted,
+      fontSize: 10, fontFamily: FONT, color: C.textMuted,
       background: C.offWhite2,
       padding: "2px 8px", borderRadius: 4,
       whiteSpace: "nowrap",
@@ -14894,7 +14894,7 @@ function AppShell({ authEmail, onSignOut }) {
     <UIContext.Provider value={uiCtx}>
     <div style={{ fontFamily: FONT, background: C.bg, minHeight: "100vh", color: C.text }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&display=swap');
         input[type=time]::-webkit-calendar-picker-indicator { opacity: 0.4; cursor: pointer; }
         input[type=date]::-webkit-calendar-picker-indicator { opacity: 0.4; cursor: pointer; }
         * { box-sizing: border-box; }
@@ -15070,7 +15070,7 @@ function AppShell({ authEmail, onSignOut }) {
           onChange={e => dispatch({ type: A.SET_SCENARIO_NAME, name: e.target.value })}
           style={{
             width: 180, padding: "4px 10px",
-            fontSize: 12, fontFamily: MONO, fontWeight: 600,
+            fontSize: 12, fontFamily: FONT, fontWeight: 600,
             color: C.text, background: C.bg,
             border: `1.5px solid ${C.brownLight}`, borderRadius: 6, outline: "none",
           }}
@@ -15395,10 +15395,10 @@ function AppShell({ authEmail, onSignOut }) {
                     placeholder="CP 192" value={row.flightNum}
                     onChange={e => updateFlightRow(row._key, "flightNum", e.target.value.toUpperCase())}
                     autoFocus={idx === flightRows.length - 1} />
-                  <input style={{ ...iStyle, width: 52, fontSize: 11, padding: "4px 4px", fontFamily: MONO, textTransform: "uppercase", letterSpacing: 0.5 }}
+                  <input style={{ ...iStyle, width: 52, fontSize: 11, padding: "4px 4px", fontFamily: FONT, textTransform: "uppercase", letterSpacing: 0.5 }}
                     placeholder="LGG" maxLength={4} value={row.depApt}
                     onChange={e => updateFlightRow(row._key, "depApt", e.target.value.toUpperCase())} />
-                  <input style={{ ...iStyle, width: 52, fontSize: 11, padding: "4px 4px", fontFamily: MONO, textTransform: "uppercase", letterSpacing: 0.5 }}
+                  <input style={{ ...iStyle, width: 52, fontSize: 11, padding: "4px 4px", fontFamily: FONT, textTransform: "uppercase", letterSpacing: 0.5 }}
                     placeholder="JFK" maxLength={4} value={row.arrApt}
                     onChange={e => updateFlightRow(row._key, "arrApt", e.target.value.toUpperCase())} />
                   <input style={{ ...iStyle, width: 72, fontSize: 11, padding: "4px 4px" }}
@@ -15494,7 +15494,7 @@ function AppShell({ authEmail, onSignOut }) {
               value={saveMonth}
               onChange={e => setSaveMonth(e.target.value)}
               style={{
-                width: "100%", padding: "8px 10px", fontSize: 13, fontFamily: MONO,
+                width: "100%", padding: "8px 10px", fontSize: 13, fontFamily: FONT,
                 border: `1.5px solid ${C.brownLight}`, borderRadius: 6,
                 color: C.text, background: C.white, outline: "none",
               }}
@@ -15539,7 +15539,7 @@ function AppShell({ authEmail, onSignOut }) {
                     } else { setAutoSummary(null); setVersionTitle(scenarioName || ""); setVersionSummary("No baseline for this month."); }
                   }}
                   style={{
-                    width: "100%", padding: "8px 10px", fontSize: 13, fontFamily: MONO,
+                    width: "100%", padding: "8px 10px", fontSize: 13, fontFamily: FONT,
                     border: `1.5px solid ${C.brownLight}`, borderRadius: 6,
                     color: C.text, background: C.white, outline: "none",
                   }}
@@ -15582,7 +15582,7 @@ function AppShell({ authEmail, onSignOut }) {
               onChange={e => setVersionSummary(e.target.value)}
               rows={4}
               style={{
-                width: "100%", padding: "8px 10px", fontSize: 11, fontFamily: MONO,
+                width: "100%", padding: "8px 10px", fontSize: 11, fontFamily: FONT,
                 border: `1.5px solid ${C.brownLight}`, borderRadius: 6,
                 color: C.text, background: C.bg, outline: "none", resize: "vertical",
               }}
@@ -15818,10 +15818,10 @@ function AppShell({ authEmail, onSignOut }) {
                                   color: sc.season === "W" ? "#1B365D" : "#92700E",
                                 }}>{sc.season === "W" ? "WIN" : "SUM"}</span>
                               </td>
-                              <td style={{ ...tdStyle, fontFamily: MONO, fontWeight: 600, fontSize: 10 }}>{sc.month || "—"}</td>
-                              <td style={{ ...tdStyle, fontFamily: MONO, fontWeight: 700, fontSize: 10, letterSpacing: 0.5 }}>{sc.author || "—"}</td>
-                              <td style={{ ...tdStyle, textAlign: "center", fontFamily: MONO }}>{sc.aircraftCount}</td>
-                              <td style={{ ...tdStyle, textAlign: "center", fontFamily: MONO }}>{sc.flightCount}</td>
+                              <td style={{ ...tdStyle, fontFamily: FONT, fontWeight: 600, fontSize: 10 }}>{sc.month || "—"}</td>
+                              <td style={{ ...tdStyle, fontFamily: FONT, fontWeight: 700, fontSize: 10, letterSpacing: 0.5 }}>{sc.author || "—"}</td>
+                              <td style={{ ...tdStyle, textAlign: "center", fontFamily: FONT }}>{sc.aircraftCount}</td>
+                              <td style={{ ...tdStyle, textAlign: "center", fontFamily: FONT }}>{sc.flightCount}</td>
                               <td style={{ ...tdStyle, fontSize: 10, color: C.textSoft }}>{fmtDate(sc.updatedAt)}</td>
                               <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>
                                 <div style={{ display: "flex", gap: 4 }}>
@@ -15917,7 +15917,7 @@ function AppShell({ authEmail, onSignOut }) {
                   ].map(([label, val]) => (
                     <div key={label} style={{ minWidth: 80 }}>
                       <div style={{ fontSize: 8, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.4 }}>{label}</div>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: C.brownDark, fontFamily: MONO }}>{val}</div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: C.brownDark, fontFamily: FONT }}>{val}</div>
                     </div>
                   ))}
                 </div>
