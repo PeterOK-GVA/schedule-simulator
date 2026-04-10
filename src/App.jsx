@@ -1,6 +1,11 @@
 import React, { useState, useRef, useCallback, useEffect, useReducer, createContext, useContext, useMemo, Fragment } from "react";
 import * as XLSX from "xlsx";
 import { Scatter, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, Line, ComposedChart } from "recharts";
+import {
+  DAY_MINS, WEEK_MINS,
+  toHHMM, parseHHMM, localTime,
+  localDayShift, shiftDOW, dayShiftUtc, dayShiftLocal,
+} from "./utils/time.js";
 
 // ╔═══════════════════════════════════════════════════════════════════════════╗
 // ║  FIREBASE SYNC — shared route table + airports across all users          ║
@@ -112,6 +117,23 @@ async function authSendPasswordReset(email) {
   if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err?.error?.message || "Failed to send reset email"); }
 }
 
+const AUTH_ERROR_MAP = {
+  EMAIL_EXISTS: "This email is already registered",
+  WEAK_PASSWORD: "Password must be at least 6 characters",
+  INVALID_EMAIL: "Please enter a valid email address",
+  OPERATION_NOT_ALLOWED: "Account creation is currently disabled",
+  TOO_MANY_ATTEMPTS_TRY_LATER: "Too many attempts — please wait and try again",
+  MISSING_PASSWORD: "Password is required",
+  MISSING_EMAIL: "Email is required",
+};
+
+function friendlyAuthError(rawMsg, fallback) {
+  if (!rawMsg) return fallback;
+  // Firebase error codes sometimes arrive with extra context (e.g. "WEAK_PASSWORD : ...")
+  const code = rawMsg.split(/[\s:]/)[0];
+  return AUTH_ERROR_MAP[code] || AUTH_ERROR_MAP[rawMsg] || fallback;
+}
+
 async function authCreateUser(email, password) {
   const res = await fetch(`${AUTH_BASE}/accounts:signUp?key=${FIREBASE.apiKey}`, {
     method: "POST",
@@ -120,10 +142,49 @@ async function authCreateUser(email, password) {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    const msg = err?.error?.message || "Failed to create user";
-    throw new Error(msg === "EMAIL_EXISTS" ? "This email is already registered" : msg === "WEAK_PASSWORD" ? "Password must be at least 6 characters" : msg);
+    const msg = err?.error?.message || "";
+    throw new Error(friendlyAuthError(msg, "Failed to create user"));
   }
   return await res.json();
+}
+
+// ─── Admin role system ──────────────────────────────────────────────────────
+//
+// Admins are stored in Firestore at `config/admins` as:
+//   { emails: ["admin1@msc.com", "admin2@msc.com", ...] }
+//
+// The first admin MUST be added manually via the Firebase Console (bootstrap).
+// After that, Firestore security rules should restrict writes to `config/admins`
+// to existing admins only.
+//
+// IMPORTANT: This is CLIENT-SIDE UI gating only. Firebase Auth's `accounts:signUp`
+// REST endpoint is publicly accessible and cannot be restricted by Firestore rules.
+// Full enforcement requires a Cloud Function (Admin SDK) as a signup proxy, or
+// disabling the signup endpoint entirely in Firebase Console.
+//
+// See ADMIN.md for deployment guidance.
+
+/**
+ * Load the admin email list from Firestore.
+ * Returns an array of lowercase emails. Empty array if the doc is missing,
+ * malformed, or unreachable (safe default: no admins).
+ */
+async function loadAdminList() {
+  try {
+    const data = await fsGet("config", "admins");
+    if (!data || !Array.isArray(data.emails)) return [];
+    return data.emails
+      .filter(e => typeof e === "string" && e.trim().length > 0)
+      .map(e => e.trim().toLowerCase());
+  } catch {
+    return [];
+  }
+}
+
+/** Is the given email an admin according to the loaded admin list? */
+function isEmailAdmin(email, adminEmails) {
+  if (!email || !Array.isArray(adminEmails) || adminEmails.length === 0) return false;
+  return adminEmails.includes(email.trim().toLowerCase());
 }
 
 // ── localStorage encryption (used by offline mode) ──────────────────────────
@@ -381,8 +442,6 @@ const HOUR_HDR_H  = 26;
 const HEADER_H    = DAY_HDR_H + HOUR_HDR_H;
 const LABEL_WIDTH = 130;
 const SNAP        = 5;
-const DAY_MINS    = 24 * 60;
-const WEEK_MINS   = 7 * DAY_MINS;
 const MAX_UPLOAD_MB = 10;
 const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 
@@ -4136,23 +4195,11 @@ function bumpIdCounters(state) {
 // ╔═══════════════════════════════════════════════════════════════════════════╗
 // ║  SECTION 2 — PURE HELPER FUNCTIONS                                       ║
 // ╚═══════════════════════════════════════════════════════════════════════════╝
+// Note: toHHMM, parseHHMM, localTime, dayShiftUtc, dayShiftLocal,
+// localDayShift, shiftDOW, DAY_MINS, and WEEK_MINS are imported from
+// ./utils/time.js at the top of this file.
 
-/** Minutes → "HH:MM" string, wrapping within a single day */
-function toHHMM(mins) {
-  const t = ((mins % DAY_MINS) + DAY_MINS) % DAY_MINS;
-  return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
-}
 function fmtBT(m) { if (m == null) return "—"; const h = Math.floor(m/60), mm = m%60; return h > 0 ? `${h}h${mm > 0 ? ` ${mm}m` : ""}` : `${mm}m`; }
-
-/** Parse "HH:MM" string → minutes, or null if invalid */
-function parseHHMM(str) {
-  if (!str) return null;
-  const m = str.match(/^(\d{1,2}):(\d{2})$/);
-  if (!m) return null;
-  const h = parseInt(m[1]), mm = parseInt(m[2]);
-  if (h < 0 || h > 23 || mm < 0 || mm > 59) return null;
-  return h * 60 + mm;
-}
 
 /** Snap minutes to nearest SNAP interval */
 function snapM(m) { return Math.round(m / SNAP) * SNAP; }
@@ -4202,33 +4249,6 @@ function fmtNum(n, dec = 1) {
 /** Format days-of-week array → "12.4.6." string */
 function formatDOWStr(days) {
   return ALL_DAYS.map(d => days.includes(d) ? String(d) : ".").join("");
-}
-
-/** How many full days does local time shift from UTC? */
-function localDayShift(depMins, utcOffset) {
-  return Math.floor((depMins + utcOffset * 60) / DAY_MINS);
-}
-
-/** Shift DOW array by ±N days (wrapping 1–7) */
-function shiftDOW(days, shift) {
-  return days.map(d => ((d - 1 + shift + 700) % 7) + 1).sort((a, b) => a - b);
-}
-
-/** How many calendar days does local arrival shift vs local departure? (0, +1, +2, etc.) */
-function dayShiftLocal(depMins, blockMins, origOffset, destOffset) {
-  const lDep = depMins + origOffset * 60;
-  const lArr = depMins + blockMins + destOffset * 60;
-  return Math.floor(lArr / DAY_MINS) - Math.floor(lDep / DAY_MINS);
-}
-
-/** How many calendar days does UTC arrival shift vs UTC departure? */
-function dayShiftUtc(depMins, blockMins) {
-  return Math.floor((depMins + blockMins) / DAY_MINS) - Math.floor(depMins / DAY_MINS);
-}
-
-/** UTC minutes → local minutes (wrapped to single day) */
-function localTime(utcMins, utcOffset) {
-  return ((utcMins + utcOffset * 60) % DAY_MINS + DAY_MINS) % DAY_MINS;
 }
 
 /** Minimum turnaround for violation detection (Gantt highlights, warnings)
@@ -5579,8 +5599,8 @@ function useScheduleValidation() {
 
     const checkWindow = (ap, utcMins, open, close, label) => {
       if (open == null || close == null) return;
-      const offset = activeSeason === "S" ? (ap.utcOffsetS ?? ap.utcOffset) : ap.utcOffset;
-      const lt = localTime(utcMins, offset);
+      // ap.utcOffset is already season-adjusted by lookupAirport
+      const lt = localTime(utcMins, ap.utcOffset);
       const outside = open <= close
         ? (lt < open || lt > close)
         : (lt < open && lt > close);
@@ -11971,7 +11991,7 @@ function SSIMTab() {
     flights.filter(f => FLIGHT_TYPES[f.type]?.ssim).forEach(f => {
       const [orig, dest] = (f.route || "XXX-YYY").split("-");
       const oAp = lookupAirport(orig), dAp = lookupAirport(dest);
-      const oOff = oAp?.utcOffset || 0, dOff = dAp?.utcOffset || 0;
+      const oOff = oAp?.utcOffset ?? 0, dOff = dAp?.utcOffset ?? 0;
       const depL = ((f.dep + oOff * 60) % DAY_MINS + DAY_MINS) % DAY_MINS;
       const arrL = ((f.dep + f.block + dOff * 60) % DAY_MINS + DAY_MINS) % DAY_MINS;
       const fnum = (f.flightNum || "").replace(/\D/g, "").slice(-4).padStart(4, "0");
@@ -11979,7 +11999,10 @@ function SSIMTab() {
       const svcType = f.type || "F";
       const key = `${fnum}|${orig}|${dest}|${f.dep}|${f.block}|${f.acId}|${svcType}`;
       if (!pats[key]) pats[key] = { fnum, orig, dest, depL, arrL, oOff, dOff, acType, svcType, days: [] };
-      pats[key].days.push(f.day || 1);
+      // SSIM DOW = local departure day (IATA standard), not UTC day
+      const depShift = localDayShift(f.dep, oOff);
+      const localDay = ((f.day - 1 + depShift + 7) % 7) + 1;
+      pats[key].days.push(localDay);
     });
     return Object.values(pats);
   }
@@ -12129,13 +12152,16 @@ function SSIMTab() {
         else if (svcType === "P" || svcType === "A") type = "P";
         else if (svcType === "T") type = "T";
         else if (svcType === "J") type = "J";
+        // SSIM DOW is local departure day — convert back to UTC day
+        const depDayShift = Math.floor((depUTC + depOff) / DAY_MINS);
         for (let d = 0; d < 7; d++) {
           if (dow[d] !== " " && dow[d] !== ".") {
+            const utcDay = ((d - depDayShift + 7) % 7) + 1;
             imported.push({
               route: orig + "-" + dest,
               dep: depUTC, block, type,
               flightNum: desig ? desig + fnum : fnum,
-              day: d + 1, cargoOp: "none", payload: 0,
+              day: utcDay, cargoOp: "none", payload: 0,
             });
           }
         }
@@ -13751,6 +13777,380 @@ function RotationTab() {
 }
 
 
+// ─── Email validation regex (RFC-lite: non-empty local + @ + domain.tld) ───
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Change Password modal — proper component so hooks obey Rules of Hooks.
+ */
+function ChangePasswordModal({ onClose }) {
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [pwError, setPwError] = useState("");
+  const [pwMsg, setPwMsg] = useState("");
+  const [pwLoading, setPwLoading] = useState(false);
+
+  async function handleSubmit(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    setPwError(""); setPwMsg("");
+    if (newPw.length < 6) { setPwError("Password must be at least 6 characters"); return; }
+    if (newPw !== confirmPw) { setPwError("Passwords do not match"); return; }
+    setPwLoading(true);
+    try {
+      await authChangePassword(newPw);
+      setPwMsg("Password changed successfully");
+      setNewPw("");
+      setConfirmPw("");
+    } catch (err) {
+      setPwError(err.message || "Failed to change password");
+    } finally {
+      setPwLoading(false);
+    }
+  }
+
+  return (
+    <Modal title="Change Password" onClose={onClose} width={380}>
+      <form onSubmit={handleSubmit}>
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 4 }}>New Password</label>
+          <input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Min 6 characters"
+            disabled={pwLoading}
+            style={{ ...iStyle, width: "100%", boxSizing: "border-box" }} autoFocus />
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 4 }}>Confirm Password</label>
+          <input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} placeholder="Repeat password"
+            disabled={pwLoading}
+            style={{ ...iStyle, width: "100%", boxSizing: "border-box" }} />
+        </div>
+        {pwError && <div style={{ marginBottom: 10, padding: "6px 10px", borderRadius: 5, background: C.dangerLight, color: C.danger, fontSize: 11 }}>{pwError}</div>}
+        {pwMsg && <div style={{ marginBottom: 10, padding: "6px 10px", borderRadius: 5, background: C.successLight, color: C.success, fontSize: 11 }}>{pwMsg}</div>}
+        <div style={{ display: "flex", gap: 8 }}>
+          <PrimaryBtn onClick={handleSubmit} disabled={pwLoading}>
+            {pwLoading ? "Changing…" : "Change Password"}
+          </PrimaryBtn>
+          <SecondaryBtn onClick={onClose}>Cancel</SecondaryBtn>
+        </div>
+        {/* Submit button for Enter-to-submit (form submission) */}
+        <button type="submit" style={{ display: "none" }} aria-hidden="true" tabIndex={-1} />
+      </form>
+    </Modal>
+  );
+}
+
+/**
+ * Add User modal — proper component so hooks obey Rules of Hooks.
+ *
+ * Security notes:
+ *  - Requires `isAdmin` prop to be true. Renders an access-denied state otherwise
+ *    (defense in depth — the parent also gates rendering on isAdmin).
+ *  - Password field uses type="password" with a show/hide toggle (not plain text).
+ *  - Email is normalized (trim + lowercase) before submission.
+ *  - Email format is validated with a regex.
+ *  - Firebase error codes are mapped to friendly messages via friendlyAuthError.
+ *  - `returnSecureToken: false` in authCreateUser preserves the admin session.
+ *
+ * Known gap: Firebase Auth's `accounts:signUp` REST endpoint is publicly
+ * accessible. Client-side admin gating prevents casual misuse but cannot
+ * stop a determined attacker with the public API key. For full enforcement,
+ * disable signup in Firebase Console and add a Cloud Function proxy that
+ * verifies the caller's admin status via the Admin SDK. See ADMIN.md.
+ */
+function AddUserModal({ onClose, isAdmin }) {
+  const [newEmail, setNewEmail] = useState("");
+  const [newUserPw, setNewUserPw] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [auError, setAuError] = useState("");
+  const [auMsg, setAuMsg] = useState("");
+  const [auLoading, setAuLoading] = useState(false);
+
+  async function handleSubmit(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    setAuError(""); setAuMsg("");
+    // Defense in depth: reject submission if prop was tampered with
+    if (!isAdmin) { setAuError("You do not have permission to add users."); return; }
+    const email = (newEmail || "").trim().toLowerCase();
+    if (!EMAIL_RE.test(email)) { setAuError("Please enter a valid email address"); return; }
+    if (newUserPw.length < 6) { setAuError("Password must be at least 6 characters"); return; }
+    setAuLoading(true);
+    try {
+      await authCreateUser(email, newUserPw);
+      setAuMsg(`Account created for ${email}`);
+      setNewEmail("");
+      setNewUserPw("");
+      setShowPw(false);
+    } catch (err) {
+      setAuError(err.message || "Failed to create user");
+    } finally {
+      setAuLoading(false);
+    }
+  }
+
+  // Defense-in-depth: if the prop is false, render access-denied instead of the form
+  if (!isAdmin) {
+    return (
+      <Modal title="Add User" onClose={onClose} width={380}>
+        <div style={{ padding: "12px 0" }}>
+          <div style={{ padding: "10px 12px", borderRadius: 6, background: C.dangerLight, color: C.danger, fontSize: 11, marginBottom: 16 }}>
+            <strong>Access denied.</strong> Adding users requires admin privileges.
+            Contact your system administrator if you need access.
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <SecondaryBtn onClick={onClose}>Close</SecondaryBtn>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal title="Add User" onClose={onClose} width={380}>
+      <form onSubmit={handleSubmit}>
+        <div style={{ fontSize: 11, color: C.textSoft, marginBottom: 12 }}>
+          Create a new account for a team member. They can change their password after signing in.
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 4 }}>Email</label>
+          <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="colleague@msc.com"
+            disabled={auLoading}
+            style={{ ...iStyle, width: "100%", boxSizing: "border-box" }} autoFocus />
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 4 }}>Temporary Password</label>
+          <div style={{ position: "relative" }}>
+            <input type={showPw ? "text" : "password"} value={newUserPw} onChange={e => setNewUserPw(e.target.value)} placeholder="Min 6 characters"
+              disabled={auLoading}
+              style={{ ...iStyle, width: "100%", boxSizing: "border-box", paddingRight: 56 }} />
+            <button type="button" onClick={() => setShowPw(v => !v)} disabled={auLoading}
+              style={{
+                position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)",
+                background: "none", border: "none", cursor: auLoading ? "not-allowed" : "pointer",
+                color: C.textMuted, fontSize: 10, fontWeight: 600, fontFamily: FONT,
+                padding: "4px 8px", textTransform: "uppercase", letterSpacing: 0.5,
+              }}
+              aria-label={showPw ? "Hide password" : "Show password"}>
+              {showPw ? "Hide" : "Show"}
+            </button>
+          </div>
+          <div style={{ fontSize: 9, color: C.textMuted, marginTop: 4 }}>
+            Share this temporary password with the new user via a secure channel. They should change it on first sign-in.
+          </div>
+        </div>
+        {auError && <div style={{ marginBottom: 10, padding: "6px 10px", borderRadius: 5, background: C.dangerLight, color: C.danger, fontSize: 11 }}>{auError}</div>}
+        {auMsg && <div style={{ marginBottom: 10, padding: "6px 10px", borderRadius: 5, background: C.successLight, color: C.success, fontSize: 11 }}>{auMsg}</div>}
+        <div style={{ display: "flex", gap: 8 }}>
+          <PrimaryBtn onClick={handleSubmit} disabled={auLoading}>
+            {auLoading ? "Creating…" : "Create Account"}
+          </PrimaryBtn>
+          <SecondaryBtn onClick={onClose}>Cancel</SecondaryBtn>
+        </div>
+        {/* Submit button for Enter-to-submit (form submission) */}
+        <button type="submit" style={{ display: "none" }} aria-hidden="true" tabIndex={-1} />
+      </form>
+    </Modal>
+  );
+}
+
+/**
+ * Manage Admins modal — list, add, and remove admins.
+ *
+ * Only admins can see this (gated in the parent). Defense-in-depth is enforced
+ * by checking isAdmin at render time AND at submit time. All writes go through
+ * `fsSet("config", "admins", ...)` which should be restricted by Firestore
+ * security rules to existing admins (see ADMIN.md).
+ *
+ * Safety guardrails:
+ *  - Cannot remove the last admin (would lock everyone out).
+ *  - Removing yourself requires explicit confirmation.
+ *  - Duplicate emails are rejected before save.
+ *  - Invalid emails are rejected before save.
+ */
+function ManageAdminsModal({ onClose, currentEmail, adminEmails, isAdmin, onAdminsUpdated }) {
+  const [list, setList] = useState(Array.isArray(adminEmails) ? adminEmails : []);
+  const [newEmail, setNewEmail] = useState("");
+  const [error, setError] = useState("");
+  const [msg, setMsg] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(null); // email awaiting removal confirmation
+
+  const myEmail = (currentEmail || "").trim().toLowerCase();
+
+  async function persist(next) {
+    setSaving(true);
+    setError("");
+    setMsg("");
+    try {
+      const ok = await fsSet("config", "admins", { emails: next });
+      if (!ok) throw new Error("Failed to save admin list");
+      setList(next);
+      if (onAdminsUpdated) onAdminsUpdated(next);
+      return true;
+    } catch (err) {
+      setError(err.message || "Failed to save admin list");
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleAdd(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!isAdmin) { setError("You do not have permission to modify admins."); return; }
+    setError("");
+    setMsg("");
+    const email = (newEmail || "").trim().toLowerCase();
+    if (!EMAIL_RE.test(email)) { setError("Please enter a valid email address"); return; }
+    if (list.includes(email)) { setError("This email is already an admin"); return; }
+    const next = [...list, email].sort();
+    const ok = await persist(next);
+    if (ok) {
+      setNewEmail("");
+      setMsg(`Added ${email}`);
+    }
+  }
+
+  async function handleRemove(email) {
+    if (!isAdmin) { setError("You do not have permission to modify admins."); return; }
+    setError("");
+    setMsg("");
+    if (list.length <= 1) {
+      setError("Cannot remove the last admin. Add another admin first.");
+      setConfirmRemove(null);
+      return;
+    }
+    const next = list.filter(e => e !== email);
+    const ok = await persist(next);
+    if (ok) {
+      setMsg(`Removed ${email}`);
+      setConfirmRemove(null);
+    }
+  }
+
+  if (!isAdmin) {
+    return (
+      <Modal title="Manage Admins" onClose={onClose} width={480}>
+        <div style={{ padding: "12px 0" }}>
+          <div style={{ padding: "10px 12px", borderRadius: 6, background: C.dangerLight, color: C.danger, fontSize: 11, marginBottom: 16 }}>
+            <strong>Access denied.</strong> Managing admins requires admin privileges.
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <SecondaryBtn onClick={onClose}>Close</SecondaryBtn>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  const sortedList = [...list].sort();
+
+  return (
+    <Modal title="Manage Admins" onClose={onClose} width={480}>
+      <div style={{ fontSize: 11, color: C.textSoft, marginBottom: 12 }}>
+        Admins can add new user accounts and manage this list. Changes take effect
+        the next time an affected user reloads the app.
+      </div>
+
+      {/* Current admin list */}
+      <div style={{ marginBottom: 16, border: `1px solid ${C.brownLight}`, borderRadius: 6, overflow: "hidden" }}>
+        <div style={{ padding: "6px 12px", background: C.offWhite2, fontSize: 10, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.5 }}>
+          Current admins ({sortedList.length})
+        </div>
+        {sortedList.length === 0 ? (
+          <div style={{ padding: "12px", fontSize: 11, color: C.textMuted, textAlign: "center" }}>
+            No admins configured.
+          </div>
+        ) : (
+          sortedList.map(email => {
+            const isSelf = email === myEmail;
+            const isConfirming = confirmRemove === email;
+            return (
+              <div key={email} style={{
+                padding: "8px 12px",
+                borderTop: `1px solid ${C.offWhite2}`,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 11,
+                background: isConfirming ? C.warnLight : "transparent",
+              }}>
+                <span style={{ flex: 1, fontFamily: MONO, color: C.text }}>
+                  {email}
+                  {isSelf && <span style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, color: C.brownDark, padding: "1px 5px", background: C.offWhite2, borderRadius: 3 }}>YOU</span>}
+                </span>
+                {isConfirming ? (
+                  <>
+                    <span style={{ fontSize: 10, color: C.danger, fontWeight: 600 }}>
+                      {isSelf ? "Remove yourself?" : "Confirm?"}
+                    </span>
+                    <button onClick={() => handleRemove(email)} disabled={saving}
+                      style={{
+                        background: C.danger, color: "#fff", border: "none", borderRadius: 4,
+                        padding: "4px 10px", fontSize: 10, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer",
+                        fontFamily: FONT,
+                      }}>
+                      {saving ? "…" : "Yes, remove"}
+                    </button>
+                    <button onClick={() => setConfirmRemove(null)} disabled={saving}
+                      style={{
+                        background: "none", color: C.textMuted, border: `1px solid ${C.brownLight}`, borderRadius: 4,
+                        padding: "4px 10px", fontSize: 10, fontWeight: 600, cursor: saving ? "not-allowed" : "pointer",
+                        fontFamily: FONT,
+                      }}>
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button onClick={() => setConfirmRemove(email)} disabled={saving || list.length <= 1}
+                    title={list.length <= 1 ? "Cannot remove the last admin" : "Remove admin"}
+                    style={{
+                      background: "none", color: list.length <= 1 ? C.textMuted : C.danger,
+                      border: `1px solid ${list.length <= 1 ? C.brownLight : C.danger}`,
+                      borderRadius: 4, padding: "4px 10px", fontSize: 10, fontWeight: 600,
+                      cursor: (saving || list.length <= 1) ? "not-allowed" : "pointer",
+                      fontFamily: FONT, opacity: list.length <= 1 ? 0.5 : 1,
+                    }}>
+                    Remove
+                  </button>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Add admin form */}
+      <form onSubmit={handleAdd}>
+        <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 4 }}>
+          Add new admin
+        </label>
+        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)}
+            placeholder="colleague@msc.com"
+            disabled={saving}
+            style={{ ...iStyle, flex: 1, boxSizing: "border-box" }} />
+          <PrimaryBtn onClick={handleAdd} disabled={saving || !newEmail.trim()}>
+            {saving ? "Saving…" : "Add"}
+          </PrimaryBtn>
+        </div>
+        {/* Submit button for Enter-to-submit */}
+        <button type="submit" style={{ display: "none" }} aria-hidden="true" tabIndex={-1} />
+      </form>
+
+      {error && <div style={{ marginBottom: 10, padding: "6px 10px", borderRadius: 5, background: C.dangerLight, color: C.danger, fontSize: 11 }}>{error}</div>}
+      {msg && <div style={{ marginBottom: 10, padding: "6px 10px", borderRadius: 5, background: C.successLight, color: C.success, fontSize: 11 }}>{msg}</div>}
+
+      <div style={{ fontSize: 9, color: C.textMuted, marginTop: 8, marginBottom: 16, lineHeight: 1.5 }}>
+        <strong>Note:</strong> This list controls UI visibility only. The ability to create user accounts also depends on Firebase Auth configuration. See ADMIN.md for full enforcement via Cloud Functions.
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <SecondaryBtn onClick={onClose}>Close</SecondaryBtn>
+      </div>
+    </Modal>
+  );
+}
+
+
 function AppShell({ authEmail, onSignOut }) {
   const {
     tab, dispatch, activeSeason, aircraft, flights,
@@ -13760,7 +14160,24 @@ function AppShell({ authEmail, onSignOut }) {
 
   const [scenarioMsg, setScenarioMsg] = useState(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const [accountModal, setAccountModal] = useState(null); // null | "password" | "addUser"
+  const [accountModal, setAccountModal] = useState(null); // null | "password" | "addUser" | "manageAdmins"
+
+  // ── Admin role (client-side UI gating) ──────────────────────────────
+  // Loaded once when AppShell mounts. See loadAdminList() and ADMIN.md.
+  const [adminEmails, setAdminEmails] = useState([]);
+  const [adminLoaded, setAdminLoaded] = useState(false);
+  const isAdmin = adminLoaded && isEmailAdmin(authEmail, adminEmails);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const list = await loadAdminList();
+      if (cancelled) return;
+      setAdminEmails(list);
+      setAdminLoaded(true);
+    })();
+    return () => { cancelled = true; };
+  }, [authEmail]);
+
   const [weekNum, setWeekNum]   = useState(() => {
     // Default to current ISO week
     const now = new Date();
@@ -14602,10 +15019,24 @@ function AppShell({ authEmail, onSignOut }) {
                     width: "100%", textAlign: "left", background: "none", border: "none", padding: "8px 14px",
                     fontSize: 11, color: C.text, cursor: "pointer", fontFamily: FONT,
                   }}>Change Password</button>
-                  <button onClick={() => { setUserMenu(false); setAccountModal("addUser"); }} style={{
-                    width: "100%", textAlign: "left", background: "none", border: "none", padding: "8px 14px",
-                    fontSize: 11, color: C.text, cursor: "pointer", fontFamily: FONT,
-                  }}>Add User</button>
+                  {isAdmin && (
+                    <>
+                      <button onClick={() => { setUserMenu(false); setAccountModal("addUser"); }} style={{
+                        width: "100%", textAlign: "left", background: "none", border: "none", padding: "8px 14px",
+                        fontSize: 11, color: C.text, cursor: "pointer", fontFamily: FONT,
+                      }}>
+                        Add User
+                        <span style={{ fontSize: 8, fontWeight: 700, color: C.amber, marginLeft: 6, padding: "1px 5px", background: C.warnLight, borderRadius: 3 }}>ADMIN</span>
+                      </button>
+                      <button onClick={() => { setUserMenu(false); setAccountModal("manageAdmins"); }} style={{
+                        width: "100%", textAlign: "left", background: "none", border: "none", padding: "8px 14px",
+                        fontSize: 11, color: C.text, cursor: "pointer", fontFamily: FONT,
+                      }}>
+                        Manage Admins
+                        <span style={{ fontSize: 8, fontWeight: 700, color: C.amber, marginLeft: 6, padding: "1px 5px", background: C.warnLight, borderRadius: 3 }}>ADMIN</span>
+                      </button>
+                    </>
+                  )}
                   <div style={{ height: 1, background: C.offWhite2, margin: "4px 0" }} />
                   <button onClick={() => { setUserMenu(false); onSignOut(); }} style={{
                     width: "100%", textAlign: "left", background: "none", border: "none", padding: "8px 14px",
@@ -15574,87 +16005,21 @@ function AppShell({ authEmail, onSignOut }) {
 
         </Modal>
       )}
-      {/* ── Account modals (change password, add user) ────────── */}
+      {/* ── Account modals (change password, add user, manage admins) ── */}
       {accountModal === "password" && (
-        <Modal title="Change Password" onClose={() => setAccountModal(null)} width={380}>
-          {(() => {
-            const [newPw, setNewPw] = useState("");
-            const [confirmPw, setConfirmPw] = useState("");
-            const [pwError, setPwError] = useState("");
-            const [pwMsg, setPwMsg] = useState("");
-            const [pwLoading, setPwLoading] = useState(false);
-            return (
-              <>
-                <div style={{ marginBottom: 12 }}>
-                  <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 4 }}>New Password</label>
-                  <input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Min 6 characters"
-                    style={{ ...iStyle, width: "100%", boxSizing: "border-box" }} autoFocus />
-                </div>
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 4 }}>Confirm Password</label>
-                  <input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} placeholder="Repeat password"
-                    style={{ ...iStyle, width: "100%", boxSizing: "border-box" }} />
-                </div>
-                {pwError && <div style={{ marginBottom: 10, padding: "6px 10px", borderRadius: 5, background: C.dangerLight, color: C.danger, fontSize: 11 }}>{pwError}</div>}
-                {pwMsg && <div style={{ marginBottom: 10, padding: "6px 10px", borderRadius: 5, background: C.successLight, color: C.success, fontSize: 11 }}>{pwMsg}</div>}
-                <div style={{ display: "flex", gap: 8 }}>
-                  <PrimaryBtn onClick={async () => {
-                    setPwError(""); setPwMsg("");
-                    if (newPw.length < 6) { setPwError("Password must be at least 6 characters"); return; }
-                    if (newPw !== confirmPw) { setPwError("Passwords do not match"); return; }
-                    setPwLoading(true);
-                    try { await authChangePassword(newPw); setPwMsg("Password changed successfully"); setNewPw(""); setConfirmPw(""); }
-                    catch (err) { setPwError(err.message || "Failed to change password"); }
-                    finally { setPwLoading(false); }
-                  }} disabled={pwLoading}>{pwLoading ? "Changing…" : "Change Password"}</PrimaryBtn>
-                  <SecondaryBtn onClick={() => setAccountModal(null)}>Cancel</SecondaryBtn>
-                </div>
-              </>
-            );
-          })()}
-        </Modal>
+        <ChangePasswordModal onClose={() => setAccountModal(null)} />
       )}
       {accountModal === "addUser" && (
-        <Modal title="Add User" onClose={() => setAccountModal(null)} width={380}>
-          {(() => {
-            const [newEmail, setNewEmail] = useState("");
-            const [newUserPw, setNewUserPw] = useState("");
-            const [auError, setAuError] = useState("");
-            const [auMsg, setAuMsg] = useState("");
-            const [auLoading, setAuLoading] = useState(false);
-            return (
-              <>
-                <div style={{ fontSize: 11, color: C.textSoft, marginBottom: 12 }}>
-                  Create a new account for a team member. They can change their password after signing in.
-                </div>
-                <div style={{ marginBottom: 12 }}>
-                  <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 4 }}>Email</label>
-                  <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="colleague@msc.com"
-                    style={{ ...iStyle, width: "100%", boxSizing: "border-box" }} autoFocus />
-                </div>
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 4 }}>Temporary Password</label>
-                  <input type="text" value={newUserPw} onChange={e => setNewUserPw(e.target.value)} placeholder="Min 6 characters"
-                    style={{ ...iStyle, width: "100%", boxSizing: "border-box" }} />
-                </div>
-                {auError && <div style={{ marginBottom: 10, padding: "6px 10px", borderRadius: 5, background: C.dangerLight, color: C.danger, fontSize: 11 }}>{auError}</div>}
-                {auMsg && <div style={{ marginBottom: 10, padding: "6px 10px", borderRadius: 5, background: C.successLight, color: C.success, fontSize: 11 }}>{auMsg}</div>}
-                <div style={{ display: "flex", gap: 8 }}>
-                  <PrimaryBtn onClick={async () => {
-                    setAuError(""); setAuMsg("");
-                    if (!newEmail || !newEmail.includes("@")) { setAuError("Please enter a valid email"); return; }
-                    if (newUserPw.length < 6) { setAuError("Password must be at least 6 characters"); return; }
-                    setAuLoading(true);
-                    try { await authCreateUser(newEmail.trim(), newUserPw); setAuMsg(`Account created for ${newEmail}`); setNewEmail(""); setNewUserPw(""); }
-                    catch (err) { setAuError(err.message || "Failed to create user"); }
-                    finally { setAuLoading(false); }
-                  }} disabled={auLoading}>{auLoading ? "Creating…" : "Create Account"}</PrimaryBtn>
-                  <SecondaryBtn onClick={() => setAccountModal(null)}>Cancel</SecondaryBtn>
-                </div>
-              </>
-            );
-          })()}
-        </Modal>
+        <AddUserModal onClose={() => setAccountModal(null)} isAdmin={isAdmin} />
+      )}
+      {accountModal === "manageAdmins" && (
+        <ManageAdminsModal
+          onClose={() => setAccountModal(null)}
+          currentEmail={authEmail}
+          adminEmails={adminEmails}
+          isAdmin={isAdmin}
+          onAdminsUpdated={setAdminEmails}
+        />
       )}
 
       {/* ── Easter egg: 777s fly across screen ──────────────────── */}
