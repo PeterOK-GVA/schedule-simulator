@@ -5274,6 +5274,8 @@ function useCloudScenarios() {
       notes: d.data?.notes || "",
       month: d.data?.month || "",
       author: d.data?.author || "",
+      weekNum: d.data?.weekNum || null,
+      weekYear: d.data?.weekYear || null,
     })).sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
     setScenarios(parsed);
     setLoading(false);
@@ -5318,13 +5320,17 @@ function useCloudScenarios() {
       const existing = await fsGet("scenarios", id);
       if (existing?.isBaseline) payload.isBaseline = true;
       // Preserve existing metadata, allow override via meta param
-      payload.notes  = meta?.notes  ?? existing?.notes  ?? "";
-      payload.month  = meta?.month  ?? existing?.month  ?? "";
-      payload.author = meta?.author ?? existing?.author ?? "";
+      payload.notes    = meta?.notes    ?? existing?.notes    ?? "";
+      payload.month    = meta?.month    ?? existing?.month    ?? "";
+      payload.author   = meta?.author   ?? existing?.author   ?? "";
+      payload.weekNum  = meta?.weekNum  ?? existing?.weekNum  ?? null;
+      payload.weekYear = meta?.weekYear ?? existing?.weekYear ?? null;
     } catch {
-      payload.notes  = meta?.notes  ?? "";
-      payload.month  = meta?.month  ?? "";
-      payload.author = meta?.author ?? "";
+      payload.notes    = meta?.notes    ?? "";
+      payload.month    = meta?.month    ?? "";
+      payload.author   = meta?.author   ?? "";
+      payload.weekNum  = meta?.weekNum  ?? null;
+      payload.weekYear = meta?.weekYear ?? null;
     }
     await fsSet("scenarios", id, payload);
     setSaving(false);
@@ -5339,6 +5345,8 @@ function useCloudScenarios() {
       notes: meta.notes || "",
       month: meta.month || "",
       author: meta.author || "",
+      weekNum: meta.weekNum ?? null,
+      weekYear: meta.weekYear ?? null,
       flights: (state.flights || []).map(f => ({
         id: f.id, acId: f.acId, route: f.route, dep: f.dep, block: f.block,
         type: f.type, flightNum: f.flightNum, day: f.day,
@@ -7307,7 +7315,7 @@ function GanttTab() {
       // Day name + date
       ctx.fillStyle = isWknd ? C.yellowHeavy : C.brownDark;
       ctx.font = "bold 16px Archivo, Arial, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      const dayDate = ui?.weekNum && ui?.weekYear ? weekDayDate(ui.weekNum, ui.weekYear, d) : null;
+      const dayDate = (ui?.showHeaderDates ?? true) && ui?.weekNum && ui?.weekYear ? weekDayDate(ui.weekNum, ui.weekYear, d) : null;
       ctx.fillText(DAY_NAMES[d - 1] + (dayDate ? ` ${fmtDDMMM(dayDate)}` : ""), dx + DAY_W / 2, EX_DAY_H / 2);
       // Day separator
       if (d > 1) {
@@ -7593,20 +7601,54 @@ function GanttTab() {
 
         {/* Week / Year selector */}
         <div style={{ width: 1, height: 16, background: C.brownLight }} />
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <span style={{ fontSize: 9, fontWeight: 600, color: C.textMuted }}>W</span>
-          <input type="number" min={1} max={53} value={ui?.weekNum || ""}
-            onChange={e => { const v = parseInt(e.target.value); if (v >= 1 && v <= 53 && ui?.setWeekNum) ui.setWeekNum(v); }}
-            style={{ width: 36, padding: "3px 4px", fontSize: 10, fontFamily: FONT, textAlign: "center", border: `1px solid ${C.brownLight}`, borderRadius: 4, color: C.text, background: C.bg, outline: "none" }} />
-          <input type="number" min={2020} max={2035} value={ui?.weekYear || ""}
-            onChange={e => { const v = parseInt(e.target.value); if (v >= 2020 && v <= 2035 && ui?.setWeekYear) ui.setWeekYear(v); }}
-            style={{ width: 48, padding: "3px 4px", fontSize: 10, fontFamily: FONT, textAlign: "center", border: `1px solid ${C.brownLight}`, borderRadius: 4, color: C.text, background: C.bg, outline: "none" }} />
-          {ui?.weekNum && ui?.weekYear && (() => {
-            const mon = weekDayDate(ui.weekNum, ui.weekYear, 1);
-            const sun = weekDayDate(ui.weekNum, ui.weekYear, 7);
-            return <span style={{ fontSize: 8, color: C.textMuted }}>{fmtDDMMM(mon)}–{fmtDDMMM(sun)}</span>;
-          })()}
-        </div>
+        {(() => {
+          const stepBtnStyle = {
+            width: 18, height: 18, padding: 0, fontSize: 11, lineHeight: 1,
+            fontFamily: FONT, fontWeight: 700,
+            border: `1px solid ${C.brownLight}`, borderRadius: 3,
+            background: C.bg, color: C.textSoft, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          };
+          const bumpWeek = (delta) => {
+            if (!ui?.setWeekNum) return;
+            const cur = ui?.weekNum || 1;
+            const next = Math.max(1, Math.min(53, cur + delta));
+            ui.setWeekNum(next);
+          };
+          const bumpYear = (delta) => {
+            if (!ui?.setWeekYear) return;
+            const cur = ui?.weekYear || 2026;
+            const next = Math.max(2020, Math.min(2035, cur + delta));
+            ui.setWeekYear(next);
+          };
+          return (
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{ fontSize: 9, fontWeight: 600, color: C.textMuted }}>W</span>
+              <input type="number" min={1} max={53} value={ui?.weekNum || ""}
+                onChange={e => { const v = parseInt(e.target.value); if (v >= 1 && v <= 53 && ui?.setWeekNum) ui.setWeekNum(v); }}
+                style={{ width: 36, padding: "3px 4px", fontSize: 10, fontFamily: FONT, textAlign: "center", border: `1px solid ${C.brownLight}`, borderRadius: 4, color: C.text, background: C.bg, outline: "none" }} />
+              <button type="button" onClick={() => bumpWeek(-1)} title="Previous week" style={stepBtnStyle}>−</button>
+              <button type="button" onClick={() => bumpWeek(+1)} title="Next week" style={stepBtnStyle}>+</button>
+              <input type="number" min={2020} max={2035} value={ui?.weekYear || ""}
+                onChange={e => { const v = parseInt(e.target.value); if (v >= 2020 && v <= 2035 && ui?.setWeekYear) ui.setWeekYear(v); }}
+                style={{ width: 48, padding: "3px 4px", fontSize: 10, fontFamily: FONT, textAlign: "center", border: `1px solid ${C.brownLight}`, borderRadius: 4, color: C.text, background: C.bg, outline: "none" }} />
+              <button type="button" onClick={() => bumpYear(-1)} title="Previous year" style={stepBtnStyle}>−</button>
+              <button type="button" onClick={() => bumpYear(+1)} title="Next year" style={stepBtnStyle}>+</button>
+              <label style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 9, fontWeight: 600, color: C.textMuted, cursor: "pointer", marginLeft: 4, userSelect: "none" }}
+                title="Show dates in the Gantt day headers (e.g. 'Mon 06 Apr'). Uncheck for generic day names.">
+                <input type="checkbox" checked={ui?.showHeaderDates ?? true}
+                  onChange={e => ui?.setShowHeaderDates?.(e.target.checked)}
+                  style={{ width: 12, height: 12, margin: 0, cursor: "pointer", accentColor: C.brownDark }} />
+                Dates
+              </label>
+              {ui?.weekNum && ui?.weekYear && (() => {
+                const mon = weekDayDate(ui.weekNum, ui.weekYear, 1);
+                const sun = weekDayDate(ui.weekNum, ui.weekYear, 7);
+                return <span style={{ fontSize: 8, color: C.textMuted, marginLeft: 4 }}>{fmtDDMMM(mon)}–{fmtDDMMM(sun)}</span>;
+              })()}
+            </div>
+          );
+        })()}
 
         <div style={{ display: "flex", gap: 8, marginLeft: "auto", alignItems: "center" }}>
 
@@ -7779,7 +7821,7 @@ function GanttTab() {
                   <text x={x + dayW / 2} y={DAY_HDR_H / 2 + 5}
                     fill={isWknd ? C.yellowHeavy : C.brownDark}
                     fontSize={11} fontFamily={FONT} fontWeight="700" textAnchor="middle">
-                    {DAY_NAMES[d - 1]}{ui?.weekNum && ui?.weekYear ? ` ${fmtDDMMM(weekDayDate(ui.weekNum, ui.weekYear, d))}` : ""}
+                    {DAY_NAMES[d - 1]}{(ui?.showHeaderDates ?? true) && ui?.weekNum && ui?.weekYear ? ` ${fmtDDMMM(weekDayDate(ui.weekNum, ui.weekYear, d))}` : ""}
                   </text>
                   <line x1={x} y1={0} x2={x} y2={svgH - 24}
                     stroke={C.brownLight} strokeWidth={d === 1 ? 0 : 1}
@@ -14187,6 +14229,8 @@ function AppShell({ authEmail, onSignOut }) {
     return Math.ceil(((now - mon1) / 86400000 + 1) / 7);
   });
   const [weekYear, setWeekYear] = useState(2026);
+  // Gantt day header: true = "Mon 06 Apr", false = generic "Mon"
+  const [showHeaderDates, setShowHeaderDates] = useState(true);
   const [acModal, setAcModal]         = useState(false);
   const [newAcReg, setNewAcReg]       = useState("");
   const [newAcPayload, setNewAcPayload] = useState(105000);
@@ -14212,6 +14256,23 @@ function AppShell({ authEmail, onSignOut }) {
   C = darkMode ? C_DARK : C_LIGHT;
   DB = darkMode ? DB_DARK : DB_LIGHT;
   useEffect(() => { window.__msc_dark = darkMode; }, [darkMode]);
+
+  // Auto-sync the Winter/Summer toggle to the IATA season for the currently
+  // selected week. Uses that week's Monday as the reference date. The user
+  // can still manually override via the season toggle, but the next week
+  // change will re-sync. See deriveSeason() and weekDayDate().
+  useEffect(() => {
+    if (!weekNum || !weekYear) return;
+    const monday = weekDayDate(weekNum, weekYear, 1);
+    if (!monday || isNaN(monday.getTime())) return;
+    const iso = fmtISO(monday);
+    const targetSeason = deriveSeason(iso);
+    if (targetSeason && targetSeason !== activeSeason) {
+      dispatch({ type: A.SET_SEASON, season: targetSeason });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekNum, weekYear]);
+
   const [exportTrigger, setExportTrigger] = useState(null); // "gantt" | "dashboard" | null
 
   // ── Easter egg: triple-click logo → 777s fly across screen ──
@@ -14244,6 +14305,8 @@ function AppShell({ authEmail, onSignOut }) {
       if (data) {
         data.scenarioName = data.name || data.scenarioName || "Default Schedule";
         dispatch({ type: A.LOAD_FULL_SCENARIO, data });
+        if (data.weekNum)  setWeekNum(data.weekNum);
+        if (data.weekYear) setWeekYear(data.weekYear);
       }
     })();
   }, [cloud.defaultId, cloud.loading]);
@@ -14495,6 +14558,8 @@ function AppShell({ authEmail, onSignOut }) {
       _saved:       new Date().toISOString(),
       scenarioName,
       scheduleDate,
+      weekNum,
+      weekYear,
       aircraft,
       flights,
       blockTable,
@@ -14686,6 +14751,8 @@ function AppShell({ authEmail, onSignOut }) {
           const data = JSON.parse(ev.target.result);
           if (!data.flights?.length) throw new Error("No flights in JSON file.");
           dispatch({ type: A.LOAD_FULL_SCENARIO, data });
+          if (data.weekNum)  setWeekNum(data.weekNum);
+          if (data.weekYear) setWeekYear(data.weekYear);
           setScenarioMsg({ ok: true, msg: `Loaded full scenario "${data.scenarioName || file.name}" from JSON.` });
         } else {
           loadExcel(ev.target.result, file.name);
@@ -14888,7 +14955,8 @@ function AppShell({ authEmail, onSignOut }) {
     exportRouteTable,
     exportAirports,
     weekNum, weekYear, setWeekNum, setWeekYear,
-  }), [aircraft, blockTable, airports, scenarioName, weekNum, weekYear]);
+    showHeaderDates, setShowHeaderDates,
+  }), [aircraft, blockTable, airports, scenarioName, weekNum, weekYear, showHeaderDates]);
 
   return (
     <UIContext.Provider value={uiCtx}>
@@ -15177,7 +15245,7 @@ function AppShell({ authEmail, onSignOut }) {
             )}
             <button
               onClick={async () => {
-                await cloud.saveScenario(cloud.activeId, stateRef.current);
+                await cloud.saveScenario(cloud.activeId, stateRef.current, { weekNum, weekYear });
                 setSavedVersion(versionCounter.current);
                 setScenarioMsg({ ok: true, msg: "Scenario saved." });
                 setTimeout(() => setScenarioMsg(null), 2000);
@@ -15644,6 +15712,7 @@ function AppShell({ authEmail, onSignOut }) {
                 <PrimaryBtn onClick={async () => {
                   const id = await cloud.createScenario(stateRef.current, newScName || scenarioName || "New Scenario", {
                     notes: newScNotes, month: newScMonth, author: newScAuthor,
+                    weekNum, weekYear,
                   });
                   if (id) {
                     setScenarioMsg({ ok: true, msg: "Scenario saved to cloud." });
@@ -15696,6 +15765,12 @@ function AppShell({ authEmail, onSignOut }) {
               if (k === "author") return (a.author || "").localeCompare(b.author || "") * dir;
               if (k === "month") return (a.month || "").localeCompare(b.month || "") * dir;
               if (k === "season") return (a.season || "").localeCompare(b.season || "") * dir;
+              if (k === "week") {
+                // Sort by year first, then week number. Scenarios without a week sort as (0, 0).
+                const ya = a.weekYear || 0, yb = b.weekYear || 0;
+                if (ya !== yb) return (ya - yb) * dir;
+                return ((a.weekNum || 0) - (b.weekNum || 0)) * dir;
+              }
               if (k === "flights") return ((a.flightCount || 0) - (b.flightCount || 0)) * dir;
               if (k === "aircraft") return ((a.aircraftCount || 0) - (b.aircraftCount || 0)) * dir;
               if (k === "updated") return (new Date(a.updatedAt || 0) - new Date(b.updatedAt || 0)) * dir;
@@ -15766,6 +15841,7 @@ function AppShell({ authEmail, onSignOut }) {
                         <tr>
                           <SortTh label="Name" sk="name" />
                           <SortTh label="Season" sk="season" width={60} />
+                          <SortTh label="Week" sk="week" width={70} />
                           <SortTh label="Month" sk="month" width={80} />
                           <SortTh label="Author" sk="author" width={60} />
                           <SortTh label="AC" sk="aircraft" width={40} />
@@ -15818,6 +15894,9 @@ function AppShell({ authEmail, onSignOut }) {
                                   color: sc.season === "W" ? "#1B365D" : "#92700E",
                                 }}>{sc.season === "W" ? "WIN" : "SUM"}</span>
                               </td>
+                              <td style={{ ...tdStyle, textAlign: "center", fontFamily: FONT, fontWeight: 600, fontSize: 10, color: C.textSoft }}>
+                                {sc.weekNum && sc.weekYear ? `W${String(sc.weekNum).padStart(2, "0")}/${sc.weekYear}` : "—"}
+                              </td>
                               <td style={{ ...tdStyle, fontFamily: FONT, fontWeight: 600, fontSize: 10 }}>{sc.month || "—"}</td>
                               <td style={{ ...tdStyle, fontFamily: FONT, fontWeight: 700, fontSize: 10, letterSpacing: 0.5 }}>{sc.author || "—"}</td>
                               <td style={{ ...tdStyle, textAlign: "center", fontFamily: FONT }}>{sc.aircraftCount}</td>
@@ -15832,6 +15911,8 @@ function AppShell({ authEmail, onSignOut }) {
                                       if (data) {
                                         data.scenarioName = data.name || data.scenarioName || sc.name;
                                         dispatch({ type: A.LOAD_FULL_SCENARIO, data });
+                                        if (data.weekNum)  setWeekNum(data.weekNum);
+                                        if (data.weekYear) setWeekYear(data.weekYear);
                                         setSavedVersion(versionCounter.current + 1);
                                         setScenarioMsg({ ok: true, msg: `Loaded "${sc.name}"` });
                                         setTimeout(() => setScenarioMsg(null), 3000);
@@ -15958,7 +16039,7 @@ function AppShell({ authEmail, onSignOut }) {
                   {sc.editing ? (
                     <>
                       <PrimaryBtn onClick={async () => {
-                        await cloud.saveScenario(sc.id, stateRef.current, { notes: sc.notes, month: sc.month, author: sc.author });
+                        await cloud.saveScenario(sc.id, stateRef.current, { notes: sc.notes, month: sc.month, author: sc.author, weekNum: sc.weekNum ?? weekNum, weekYear: sc.weekYear ?? weekYear });
                         await cloud.refresh();
                         setScDetail({ ...sc, editing: false });
                         setScenarioMsg({ ok: true, msg: "Scenario details updated." });
@@ -15976,6 +16057,8 @@ function AppShell({ authEmail, onSignOut }) {
                           if (data) {
                             data.scenarioName = data.name || data.scenarioName || sc.name;
                             dispatch({ type: A.LOAD_FULL_SCENARIO, data });
+                            if (data.weekNum)  setWeekNum(data.weekNum);
+                            if (data.weekYear) setWeekYear(data.weekYear);
                             setSavedVersion(versionCounter.current + 1);
                             setScDetail(null);
                             setScenarioMsg({ ok: true, msg: `Loaded "${sc.name}"` });
