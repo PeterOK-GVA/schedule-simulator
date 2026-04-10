@@ -7624,12 +7624,12 @@ function GanttTab() {
           return (
             <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
               <span style={{ fontSize: 9, fontWeight: 600, color: C.textMuted }}>W</span>
-              <input type="number" min={1} max={53} value={ui?.weekNum || ""}
+              <input type="number" className="no-spin" min={1} max={53} value={ui?.weekNum || ""}
                 onChange={e => { const v = parseInt(e.target.value); if (v >= 1 && v <= 53 && ui?.setWeekNum) ui.setWeekNum(v); }}
                 style={{ width: 36, padding: "3px 4px", fontSize: 10, fontFamily: FONT, textAlign: "center", border: `1px solid ${C.brownLight}`, borderRadius: 4, color: C.text, background: C.bg, outline: "none" }} />
               <button type="button" onClick={() => bumpWeek(-1)} title="Previous week" style={stepBtnStyle}>−</button>
               <button type="button" onClick={() => bumpWeek(+1)} title="Next week" style={stepBtnStyle}>+</button>
-              <input type="number" min={2020} max={2035} value={ui?.weekYear || ""}
+              <input type="number" className="no-spin" min={2020} max={2035} value={ui?.weekYear || ""}
                 onChange={e => { const v = parseInt(e.target.value); if (v >= 2020 && v <= 2035 && ui?.setWeekYear) ui.setWeekYear(v); }}
                 style={{ width: 48, padding: "3px 4px", fontSize: 10, fontFamily: FONT, textAlign: "center", border: `1px solid ${C.brownLight}`, borderRadius: 4, color: C.text, background: C.bg, outline: "none" }} />
               <button type="button" onClick={() => bumpYear(-1)} title="Previous year" style={stepBtnStyle}>−</button>
@@ -14965,6 +14965,10 @@ function AppShell({ authEmail, onSignOut }) {
         @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&display=swap');
         input[type=time]::-webkit-calendar-picker-indicator { opacity: 0.4; cursor: pointer; }
         input[type=date]::-webkit-calendar-picker-indicator { opacity: 0.4; cursor: pointer; }
+        /* Hide native spinner arrows on number inputs that have their own stepper buttons */
+        input.no-spin::-webkit-outer-spin-button,
+        input.no-spin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        input.no-spin { -moz-appearance: textfield; }
         * { box-sizing: border-box; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: ${darkMode ? "#1A1A1E" : "#F3F4F6"}; }
