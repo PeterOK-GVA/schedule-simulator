@@ -10728,10 +10728,10 @@ function RouteCalculatorTab() {
   const estimate = useMemo(() => {
     if (tableMatch) return null; // route table takes priority
     if (depCode.length < 3 || arrCode.length < 3 || depCode === arrCode) return null;
-    const est = estimateBlock(depCode, arrCode, season);
+    const est = estimateBlock(depCode, arrCode, season, calcAoc);
     if (!est) return null;
     return { ...est, dep: depCode, arr: arrCode, blockHrs: +(est.blockMins / 60).toFixed(2) };
-  }, [depCode, arrCode, season, tableMatch]);
+  }, [depCode, arrCode, season, calcAoc, tableMatch]);
 
   const currentDir = estimate?.dir || tableMatch?.dir || null;
 
@@ -10760,16 +10760,16 @@ function RouteCalculatorTab() {
       blockLine.push({ dist: Math.round(d), block: Math.round(base * dirFactor) });
     }
 
-    // Payload vs block time — fuel-burn model curve
+    // Payload vs block time — fuel-burn model curve (AOC-specific if available)
     const payloadLine = [];
     const minB = 60, maxB = 1200;
     for (let i = 0; i <= steps; i++) {
       const b = minB + (maxB - minB) * (i / steps);
-      payloadLine.push({ block: Math.round(b), payload: estimatePayloadByBlock(Math.round(b)) });
+      payloadLine.push({ block: Math.round(b), payload: estimatePayloadByBlock(Math.round(b), calcAoc) });
     }
 
     return { block: blockLine, payload: payloadLine };
-  }, [season, currentDir, directionData]);
+  }, [season, currentDir, directionData, calcAoc]);
 
   const fmtBT = (m) => { const h = Math.floor(m/60), mm = m%60; return h > 0 ? `${h}h ${mm > 0 ? `${mm}m` : ""}`.trim() : `${mm}m`; };
 
@@ -10836,10 +10836,11 @@ function RouteCalculatorTab() {
             )}
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12 }}>
             {[
               { label: `Block Time (${season === "W" ? "Winter" : "Summer"})`, value: fmtBT(tableMatch.block), sub: `${tableMatch.block} minutes · AOC: ${tableMatch.aoc || "—"}` },
               { label: `Max Payload (${season === "W" ? "Winter" : "Summer"})`, value: fmtKg(tableMatch.payload), sub: "From route table" },
+              { label: `Est. Fuel Burn (${calcAoc})`, value: fmtKg(estimateFuelBurn(tableMatch.block, calcAoc, false)), sub: `${FUEL_MODELS[calcAoc] ? "AOC-specific loaded curve" : "Legacy model"}` },
               { label: "GCD Distance", value: tableMatch.dist ? `${fmtNum(tableMatch.dist, 0)} km` : "—", sub: tableMatch.dir || "—" },
               { label: "Source", value: "Route Table", sub: "OFP-validated data" },
             ].map((k, i) => (
@@ -10885,11 +10886,12 @@ function RouteCalculatorTab() {
       {/* Results card (estimate — only shown when NOT in route table) */}
       {estimate && (
         <div style={{
-          display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12, marginBottom: 24,
+          display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 24,
         }}>
           {[
             { label: `Block Time (${season === "W" ? "Winter" : "Summer"})`, value: fmtBT(estimate.blockMins), sub: `${estimate.blockMins} minutes` },
             { label: `Max Payload (${season === "W" ? "Winter" : "Summer"})`, value: fmtKg(estimate.payloadKg), sub: `from ${estimate.blockMins}m block` },
+            { label: `Est. Fuel Burn (${calcAoc})`, value: fmtKg(estimate.fuelKg), sub: `${FUEL_MODELS[calcAoc] ? "AOC-specific loaded curve" : "Legacy model"}` },
             { label: "GCD Distance", value: `${fmtNum(estimate.dist, 0)} km`, sub: `${estimate.dir} · dir ×${estimate.dirFactor}` },
             { label: "Wind Correction", value: estimate.windFactor !== 1.0 ? `×${estimate.windFactor.toFixed(3)}` : "None",
               sub: `${estimate.depReg}→${estimate.arrReg}` },
