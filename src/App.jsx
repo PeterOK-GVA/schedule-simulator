@@ -10814,8 +10814,16 @@ function RouteCalculatorTab() {
             }}>{s === "W" ? "❄︎ Winter" : "☀︎ Summer"}</button>
           ))}
         </div>
-
+        <div>
+          <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>AOC</label>
+          <select value={calcAoc} onChange={e => setCalcAoc(e.target.value)} style={{
+            ...iStyle, width: 70, fontSize: 14, padding: "7px 8px", fontWeight: 700, letterSpacing: 0.5,
+          }}>
+            <option value="CP">CP</option>
+            <option value="5Y">5Y</option>
+          </select>
         </div>
+      </div>
 
       {/* Route table match card */}
       {tableMatch && (
@@ -10938,7 +10946,7 @@ function RouteCalculatorTab() {
           { icon: "⇌", text: `Direction factor ×${est.dirFactor} applied for ${est.dir} routing. ${isEW ? "Eastbound routes face jet stream headwinds in winter." : isWE ? "Westbound routes benefit from jet stream tailwinds." : "N/S routes have minimal jet stream effect."}` },
           est.windFactor !== 1.0 && { icon: "≈", text: `Seasonal wind correction ×${est.windFactor.toFixed(3)} for ${est.regionPair} (${season === "W" ? "winter" : "summer"}). Based on ${BLOCK_MODEL[season]?.n || 990} OFP-validated data points.` },
           { icon: "◷", text: `Intercept of ~43 minutes includes taxi, climb, and descent overhead. Validated against 451 OFP flight plans (median taxi: 20 minutes).` },
-          { icon: "▭", text: `Max payload ${fmtKg(est.payloadKg)} is the structural weight capability at this distance. Actual commercial payload may be lower due to volume constraints or demand.` },
+          { icon: "▭", text: `Max payload ${fmtKg(est.payloadKg)} derived from ${FUEL_MODELS[calcAoc] ? `AOC-specific (${calcAoc}) loaded fuel curve` : "legacy fuel model"}. Structural max: ${fmtKg(FUEL_MODELS.structMax)}. Actual commercial payload may be lower due to volume constraints or demand.` },
         ].filter(Boolean);
 
         const warnings = [
@@ -11010,14 +11018,6 @@ function RouteCalculatorTab() {
         const estS = estimateBlock(depCode, arrCode, "S");
         return (
           <div style={{ marginBottom: 16, display: "flex", gap: 10, alignItems: "center" }}>
-            {!exists && (
-              <select value={calcAoc} onChange={e => setCalcAoc(e.target.value)} style={{
-                ...iStyle, width: 70, fontSize: 11, padding: "8px 6px",
-              }}>
-                <option value="CP">CP</option>
-                <option value="5Y">5Y</option>
-              </select>
-            )}
             <button onClick={() => {
               if (exists) return;
               dispatch({
@@ -11149,7 +11149,7 @@ function RouteCalculatorTab() {
           {(() => {
             return (
               <div style={{ fontSize: 9, color: C.textMuted, marginTop: 6 }}>
-                Fuel-burn model from {fmtNum(FUEL_MODEL.n, 0)} B777F flights · Max = {fmtKg(FUEL_MODEL.structMax)} · Payload derived from block time
+                {FUEL_MODELS[calcAoc] ? `${calcAoc} loaded fuel curve` : `Legacy fuel model (${fmtNum(FUEL_MODEL.n, 0)} flights)`} · Max = {fmtKg(FUEL_MODELS.structMax)} · Payload derived from block time
               </div>
             );
           })()}
@@ -11175,19 +11175,36 @@ function RouteCalculatorTab() {
               <div style={{ fontFamily: FONT, fontSize: 10, marginTop: 2 }}>× wind correction (by region pair)</div>
               <div style={{ color: C.textMuted, marginTop: 2 }}>{m.n} data points · Rounded to 5 min</div>
             </div>
-            <div style={{
-              padding: "12px 16px", borderRadius: 8, background: C.offWhite2,
-              border: `1px solid ${C.brownLight}`, fontSize: 11, lineHeight: 1.7,
-            }}>
-              <div style={{ fontWeight: 700, color: C.brownDark, marginBottom: 4 }}>Payload Model (fuel-burn based)</div>
-              <div style={{ fontFamily: FONT, fontSize: 10 }}>
-                Fuel P75 = {FUEL_MODEL.a} × block² + {FUEL_MODEL.b} × block + {FUEL_MODEL.c}
-              </div>
-              <div style={{ fontFamily: FONT, fontSize: 10, marginTop: 2 }}>
-                Max payload = min({fmtKg(FUEL_MODEL.structMax)}, {fmtKg(FUEL_MODEL.capacity)} − fuel)
-              </div>
-              <div style={{ color: C.textMuted, marginTop: 2 }}>Derived from {fmtNum(FUEL_MODEL.n, 0)} B777F flights (P75 fuel burn by block time)</div>
-            </div>
+            {(() => {
+              const fm = FUEL_MODELS[calcAoc]?.loaded || FUEL_MODEL;
+              const isAocSpecific = !!FUEL_MODELS[calcAoc];
+              return (
+                <div style={{
+                  padding: "12px 16px", borderRadius: 8, background: C.offWhite2,
+                  border: `1px solid ${C.brownLight}`, fontSize: 11, lineHeight: 1.7,
+                }}>
+                  <div style={{ fontWeight: 700, color: C.brownDark, marginBottom: 4 }}>
+                    Fuel / Payload Model ({isAocSpecific ? `${calcAoc} loaded` : "Legacy"})
+                  </div>
+                  <div style={{ fontFamily: FONT, fontSize: 10 }}>
+                    Fuel = {fm.a} × block² + {fm.b} × block + ({fm.c})
+                  </div>
+                  <div style={{ fontFamily: FONT, fontSize: 10, marginTop: 2 }}>
+                    Max payload = min({fmtKg(FUEL_MODELS.structMax)}, {fmtKg(FUEL_MODELS.capacity)} − fuel)
+                  </div>
+                  {isAocSpecific && (
+                    <div style={{ fontFamily: FONT, fontSize: 10, marginTop: 2, color: C.textMuted }}>
+                      Empty curve: {FUEL_MODELS[calcAoc].empty.a} × block² + {FUEL_MODELS[calcAoc].empty.b} × block + ({FUEL_MODELS[calcAoc].empty.c})
+                    </div>
+                  )}
+                  <div style={{ color: C.textMuted, marginTop: 2 }}>
+                    {isAocSpecific
+                      ? `AOC-specific curves from ${fmtNum(fm.n, 0)} route simulations (gal→kg via 3.04 kg/gal)`
+                      : `Legacy single curve from ${fmtNum(FUEL_MODEL.n, 0)} B777F flights`}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         );
       })()}
@@ -11199,8 +11216,9 @@ function RouteCalculatorTab() {
       }}>
         <div style={{ fontWeight: 700, color: C.brownDark, marginBottom: 4 }}>Methodology</div>
         <div><strong>Block times</strong> use a 3-step model: (1) linear regression against GCD distance per season (intercept ~43m absorbs taxi + climb/descent); (2) a direction factor that scales with distance; (3) seasonal wind corrections by region pair (22 winter + 23 summer). Trained on 1,982 data points (OFP + performance data).</div>
-        <div style={{ marginTop: 4 }}><strong>Max payload</strong> is derived from a fuel-burn regression against block time, fitted on {fmtNum(FUEL_MODEL.n, 0)} B777F flights. P75 fuel burn follows a quadratic curve; max payload = fuel+payload capacity ({fmtKg(FUEL_MODEL.capacity)}) minus estimated fuel, capped at the structural maximum ({fmtKg(FUEL_MODEL.structMax)}). Full payload available up to ~11h block; declines progressively beyond that as fuel displaces payload. This captures directional asymmetry (e.g. westbound transatlantic burns more fuel than eastbound at the same distance).</div>
-        <div style={{ marginTop: 4 }}>Block time: 2 seasonal models × {Object.keys(WIND_CORRECTION.W).length + Object.keys(WIND_CORRECTION.S).length} seasonal wind corrections. Payload: fuel-burn model from {fmtNum(FUEL_MODEL.n, 0)} B777F flights. Validate with Flight Performance before operational use.</div>
+        <div style={{ marginTop: 4 }}><strong>Fuel burn</strong> uses AOC-specific quadratic curves (CP and 5Y) with separate empty and loaded profiles, converted from gallon-based coefficients using 3.04 kg/gal. Source: cost model analysis of 3,304 route simulations. The loaded curve is used for revenue flight payload estimation; the empty curve applies to ferry/positioning flights. When no AOC is selected, a legacy single curve (fitted from {fmtNum(FUEL_MODEL.n, 0)} flights) is used as fallback.</div>
+        <div style={{ marginTop: 4 }}><strong>Max payload</strong> = fuel+payload capacity ({fmtKg(FUEL_MODELS.capacity)}) minus estimated fuel burn (using the selected AOC's loaded curve), capped at the structural maximum ({fmtKg(FUEL_MODELS.structMax)}). Full payload available up to ~9-11h block depending on AOC; declines progressively beyond that as fuel displaces payload.</div>
+        <div style={{ marginTop: 4 }}>Block time: 2 seasonal models x {Object.keys(WIND_CORRECTION.W).length + Object.keys(WIND_CORRECTION.S).length} seasonal wind corrections. Fuel: 4 AOC-specific curves (2 AOC x empty/loaded). Validate with Flight Performance before operational use.</div>
       </div>
     </div>
   );
