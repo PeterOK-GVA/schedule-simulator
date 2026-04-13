@@ -2556,16 +2556,53 @@ const BLOCK_MODEL = {
 };
 const DIR_KEYS = { "East\u2192West": "kEW", "West\u2192East": "kWE", "North\u2192South": "kNS", "South\u2192North": "kSN" };
 
-// Block-time payload model — fitted from 4,638 B777F flights (5Y historic data)
+// Block-time payload model — original single curve (legacy fallback)
 // Fuel burn P75 quadratic: fuel = -0.077084 * block² + 199.15 * block - 13656
-// Max payload = min(structuralMax, max(0, fuelPayloadCapacity - fuelBurn))
 // Calibrated capacity: 186,000 kg (MTOW - OEW), structural max: 105,000 kg
 const FUEL_MODEL = { a: -0.077084, b: 199.15, c: -13656, capacity: 186000, structMax: 105000, n: 4638 };
-/** Payload estimate from block time (minutes) — preferred over distance-based */
-function estimatePayloadByBlock(blockMins) {
-  if (blockMins <= 0) return FUEL_MODEL.structMax;
-  const fuel = FUEL_MODEL.a * blockMins * blockMins + FUEL_MODEL.b * blockMins + FUEL_MODEL.c;
-  return Math.min(FUEL_MODEL.structMax, Math.max(0, Math.round(FUEL_MODEL.capacity - Math.max(0, fuel))));
+
+// AOC-specific fuel curves (2 AOC x 2 payload states)
+// Converted from gallons to kg using 1 US gal Jet-A = 3.04 kg.
+// Source: cost model analysis of 3,304 route simulations.
+// fuel_kg = a × block² + b × block + c
+// - "empty" = ferry/positioning flights (0 payload)
+// - "loaded" = revenue flights (any cargo onboard)
+const FUEL_MODELS = {
+  CP: {
+    empty:  { a:  0.023782, b:  68.86, c:    -52, n: 3304 },
+    loaded: { a:  0.000404, b: 139.69, c: -4569,  n: 3304 },
+  },
+  "5Y": {
+    empty:  { a:  0.023213, b:  71.35, c:     36, n: 3304 },
+    loaded: { a: -0.023068, b: 160.76, c: -9004,  n: 3304 },
+  },
+  capacity: 186000,
+  structMax: 105000,
+};
+
+/**
+ * Estimate fuel burn in kg from block time. Uses AOC-specific loaded/empty curve
+ * when available, falls back to legacy single model.
+ * @param {number} blockMins - Block time in minutes
+ * @param {string} [aoc] - Airline operator code ("CP" or "5Y")
+ * @param {boolean} [isEmpty=false] - True for ferry/positioning (no cargo)
+ */
+function estimateFuelBurn(blockMins, aoc, isEmpty) {
+  if (blockMins <= 0) return 0;
+  const curve = (aoc && FUEL_MODELS[aoc]) ? FUEL_MODELS[aoc][isEmpty ? "empty" : "loaded"] : FUEL_MODEL;
+  return Math.max(0, Math.round(curve.a * blockMins * blockMins + curve.b * blockMins + curve.c));
+}
+
+/**
+ * Payload estimate from block time (minutes). Uses AOC-specific loaded curve
+ * when available, falls back to legacy single model.
+ * @param {number} blockMins - Block time in minutes
+ * @param {string} [aoc] - Airline operator code ("CP" or "5Y")
+ */
+function estimatePayloadByBlock(blockMins, aoc) {
+  if (blockMins <= 0) return FUEL_MODELS.structMax;
+  const fuel = estimateFuelBurn(blockMins, aoc, false);
+  return Math.min(FUEL_MODELS.structMax, Math.max(0, Math.round(FUEL_MODELS.capacity - fuel)));
 }
 
 // Airport regions are now inline in AIRPORT_DATA (r field)
@@ -2621,8 +2658,14 @@ function detectDirection(lat1, lon1, lat2, lon2) {
   return dLat > 0 ? "South→North" : "North→South";
 }
 
-/** Estimate block time (mins) and payload (kg) for a route */
-function estimateBlock(depCode, arrCode, season) {
+/**
+ * Estimate block time (mins), payload (kg), and fuel burn (kg) for a route.
+ * @param {string} depCode - Departure IATA code
+ * @param {string} arrCode - Arrival IATA code
+ * @param {string} season - "W" or "S"
+ * @param {string} [aoc] - Optional AOC for fuel/payload model selection
+ */
+function estimateBlock(depCode, arrCode, season, aoc) {
   const dep = AIRPORT_DATA[depCode], arr = AIRPORT_DATA[arrCode];
   if (!dep || !arr) return null;
   const dist = haversineGCD(dep.lat, dep.lon, arr.lat, arr.lon);
@@ -2646,8 +2689,9 @@ function estimateBlock(depCode, arrCode, season) {
 
   const adjMins = base * dirFactor * windFactor;
   const blockRounded = Math.max(30, Math.round(adjMins / 5) * 5);
-  const payloadKg = estimatePayloadByBlock(blockRounded);
-  return { dist: Math.round(dist), dir, blockMins: blockRounded, payloadKg, season,
+  const payloadKg = estimatePayloadByBlock(blockRounded, aoc);
+  const fuelKg = estimateFuelBurn(blockRounded, aoc, false);
+  return { dist: Math.round(dist), dir, blockMins: blockRounded, payloadKg, fuelKg, season,
            n: m.n, payloadN: FUEL_MODEL.n, windFactor, dirFactor: +dirFactor.toFixed(3),
            regionPair, depReg, arrReg };
 }
@@ -3775,6 +3819,33 @@ const SEED_BLOCK_TABLE = [
   { id: "bt1118", route: "ZAZ-NRT", W: 840, S: 835, payloadW: 86000, payloadS: 85000, aoc: "5Y" },
   { id: "bt1119", route: "ZAZ-RUH", W: 355, S: 355, payloadW: 104800, payloadS: 104500, aoc: "5Y" },
   { id: "bt1120", route: "ZAZ-TLV", W: 270, S: 265, payloadW: 104800, payloadS: 104800, aoc: "5Y" },
+  // ── Estimated routes (regression-based, no OFP data available yet) ──
+  // These 22 routes were identified as missing from the cost model analysis.
+  // Block times are from the regression model without wind corrections.
+  // Replace with actual OFP or operational data when available.
+  { id: "bt1121", route: "ALA-FCO", W: 430, S: 425, payloadW: 105000, payloadS: 105000, aoc: "5Y", estimated: true },
+  { id: "bt1122", route: "ANC-SZX", W: 655, S: 645, payloadW: 98900, payloadS: 100300, aoc: "5Y", estimated: true },
+  { id: "bt1123", route: "BKK-EHU", W: 220, S: 220, payloadW: 105000, payloadS: 105000, aoc: "5Y", estimated: true },
+  { id: "bt1124", route: "BOM-TPE", W: 420, S: 410, payloadW: 105000, payloadS: 105000, aoc: "5Y", estimated: true },
+  { id: "bt1125", route: "BUD-CAN", W: 675, S: 665, payloadW: 96100, payloadS: 97500, aoc: "5Y", estimated: true },
+  { id: "bt1126", route: "BUD-SZX", W: 680, S: 670, payloadW: 95400, payloadS: 96800, aoc: "5Y", estimated: true },
+  { id: "bt1127", route: "CVG-LGG", W: 550, S: 545, payloadW: 105000, payloadS: 105000, aoc: "5Y", estimated: true },
+  { id: "bt1128", route: "DFW-LGG", W: 645, S: 635, payloadW: 100300, payloadS: 101700, aoc: "5Y", estimated: true },
+  { id: "bt1129", route: "DFW-UIO", W: 355, S: 350, payloadW: 105000, payloadS: 105000, aoc: "5Y", estimated: true },
+  { id: "bt1130", route: "EHU-NGO", W: 200, S: 200, payloadW: 105000, payloadS: 105000, aoc: "5Y", estimated: true },
+  { id: "bt1131", route: "EMA-BOM", W: 590, S: 580, payloadW: 105000, payloadS: 105000, aoc: "5Y", estimated: true },
+  { id: "bt1132", route: "FAI-EHU", W: 590, S: 580, payloadW: 105000, payloadS: 105000, aoc: "5Y", estimated: true },
+  { id: "bt1133", route: "FAI-HAN", W: 690, S: 680, payloadW: 94000, payloadS: 95400, aoc: "5Y", estimated: true },
+  { id: "bt1134", route: "FAI-JFK", W: 440, S: 430, payloadW: 105000, payloadS: 105000, aoc: "5Y", estimated: true },
+  { id: "bt1135", route: "FAI-SZX", W: 655, S: 640, payloadW: 98900, payloadS: 101000, aoc: "5Y", estimated: true },
+  { id: "bt1136", route: "GDL-LAX", W: 200, S: 200, payloadW: 105000, payloadS: 105000, aoc: "5Y", estimated: true },
+  { id: "bt1137", route: "GRU-LGG", W: 765, S: 755, payloadW: 83500, payloadS: 84900, aoc: "5Y", estimated: true },
+  { id: "bt1138", route: "GUW-HKG", W: 505, S: 495, payloadW: 105000, payloadS: 105000, aoc: "5Y", estimated: true },
+  { id: "bt1139", route: "HKG-FAI", W: 655, S: 645, payloadW: 98900, payloadS: 100300, aoc: "5Y", estimated: true },
+  { id: "bt1140", route: "JFK-FAI", W: 440, S: 430, payloadW: 105000, payloadS: 105000, aoc: "5Y", estimated: true },
+  // Short-haul routes identified with high regression error
+  { id: "bt1141", route: "MXP-HHN", W: 80, S: 80, payloadW: 105000, payloadS: 105000, aoc: "5Y", estimated: true },
+  { id: "bt1142", route: "NLU-GDL", W: 80, S: 75, payloadW: 105000, payloadS: 105000, aoc: "5Y", estimated: true },
 ];
 SEED_BLOCK_TABLE.forEach(r => SEED_ROUTE_SET.add(r.route + "|" + (r.aoc || "EST")));
 
@@ -4404,20 +4475,21 @@ function extractPayload(entry, season) {
 
 /**
  * Full block time resolution: table lookup with estimate fallback.
- * Returns { block, payload, source: "table"|"estimated" } or null.
+ * Returns { block, payload, fuelKg, source: "table"|"estimated" } or null.
  */
 function resolveBlockTime(blockTable, route, aoc, season, flightNum) {
   const entry = resolveBlockEntry(blockTable, route, aoc, flightNum);
   if (entry) {
     const block = extractBlock(entry, season);
     const payload = extractPayload(entry, season);
-    return block ? { block, payload: payload || 0, source: "table", entry } : null;
+    const fuelKg = block ? estimateFuelBurn(block, aoc, false) : 0;
+    return block ? { block, payload: payload || 0, fuelKg, source: "table", entry } : null;
   }
-  // Estimate fallback
+  // Estimate fallback (pass aoc for AOC-specific fuel/payload curves)
   const [dep, arr] = (route || "").toUpperCase().split("-");
   if (dep && arr) {
-    const est = estimateBlock(dep, arr, season);
-    if (est) return { block: est.blockMins, payload: est.payloadKg, source: "estimated", estimate: est };
+    const est = estimateBlock(dep, arr, season, aoc);
+    if (est) return { block: est.blockMins, payload: est.payloadKg, fuelKg: est.fuelKg, source: "estimated", estimate: est };
   }
   return null;
 }
