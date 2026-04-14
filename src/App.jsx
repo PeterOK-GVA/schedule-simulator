@@ -13171,41 +13171,6 @@ function FeasibilityTab() {
   return (
     <div style={{ padding: 24, maxWidth: 1200, margin: "0 auto" }}>
 
-      {/* Capability summary (replaces old WIP banner) */}
-      {capsExpanded && (
-        <div style={{
-          marginBottom: 16, padding: "12px 18px", borderRadius: 8,
-          background: C.offWhite2, border: `1px solid ${C.brownLight}`, fontSize: 10, color: C.textSoft, lineHeight: 1.7,
-        }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: C.brownDark }}>Validation Checks</span>
-            <button onClick={() => setCapsExpanded(false)} style={{ background: "none", border: "none", cursor: "pointer", color: C.textMuted, fontSize: 10 }}>✕ Hide</button>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <div>
-              <div style={{ fontWeight: 700, color: C.success, marginBottom: 4 }}>Active</div>
-              {["Curfew violations (with cargo exemptions & buffer warnings)", "Schedule conflicts", "Station connectivity", "Block time validation",
-                "Turnaround analysis (cargo-aware)", "Maintenance slot validation (5 checks)", "Weekly rotation continuity", "Payload vs structural & route limits",
-                "Ultra-long-haul detection (>17h)", "Per-flight curfew waivers"].map(t => (
-                <div key={t} style={{ display: "flex", gap: 4, alignItems: "center" }}><span style={{ color: C.success }}>●</span> {t}</div>
-              ))}
-            </div>
-            <div>
-              <div style={{ fontWeight: 700, color: C.textMuted, marginBottom: 4 }}>Planned</div>
-              {["Crew duty / FTL limits", "ETOPS constraints", "Dangerous goods routing", "Aircraft maintenance cadence (C-check / A-check)", "Fuel / range checks"].map(t => (
-                <div key={t} style={{ display: "flex", gap: 4, alignItems: "center" }}><span style={{ color: C.textMuted }}>○</span> {t}</div>
-              ))}
-            </div>
-          </div>
-          <div style={{ marginTop: 8, fontSize: 9, color: C.textMuted }}>Covering 10 of 15 planned check categories</div>
-        </div>
-      )}
-      {!capsExpanded && (
-        <button onClick={() => setCapsExpanded(true)} style={{
-          background: "none", border: `1px solid ${C.brownLight}`, borderRadius: 4, padding: "3px 10px",
-          cursor: "pointer", fontSize: 9, color: C.textMuted, fontFamily: FONT, marginBottom: 12,
-        }}>Show validation capabilities</button>
-      )}
       {/* ── Checklist-Centred Feasibility View ── */}
       {(() => {
         const ackSet = ui?.acknowledgedIssues || new Set();
