@@ -12960,7 +12960,7 @@ function FeasibilityTab() {
           // Only warn once per airport per flight (check if we already added this)
           const alreadyWarned = list.some(i => i.flightId === f.id && i.category === "Unverified Airport" && i.detail.includes(apCode));
           if (!alreadyWarned) {
-            list.push({ ...base, category: "Unverified Airport", severity: "warning",
+            list.push({ ...base, category: "Unverified Curfew", severity: "warning",
               detail: `${opLabel} airport ${apCode} has no verified curfew data. Confirm curfew policy with ground handler before scheduling.` });
           }
         }
@@ -13225,7 +13225,7 @@ function FeasibilityTab() {
         const checkItems = [
           { label: "Zero curfew violations (or all waived)", failLevel: "fail",
             desc: "Checks that all flights depart and arrive within the airport's operating window. Hard curfew violations are errors; quota and noise-managed airports show as warnings. Near-curfew buffer warnings (within 30 minutes of boundary) are included.",
-            filter: i => (i.category === "Curfew" && i.severity === "error") || i.category === "Curfew Buffer" },
+            filter: i => (i.category === "Curfew" && i.severity === "error") || i.category === "Curfew Buffer" || i.category === "Unverified Curfew" },
           { label: "Zero schedule conflicts", failLevel: "fail",
             desc: "Checks for overlapping flight blocks on the same aircraft and day. Two flights cannot occupy the same time slot on one tail.",
             filter: i => i.category === "Conflict" },
