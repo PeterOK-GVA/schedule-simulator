@@ -5818,7 +5818,12 @@ function useScheduleValidation() {
     const aoc = flightAoc(flight.acId);
     const entry = lookupBlockEntry(flight.route, aoc, flight.flightNum);
     if (!entry) return false;
-    // Use the same priority chain: ops > perf
+    const perfBlock = activeSeason === "W" ? entry.W : entry.S;
+    const opsBlock = activeSeason === "W" ? entry.opW : entry.opS;
+    // Within 5% of EITHER ops or perf = acceptable, don't flag
+    const withinTolerance = (ref) => ref && ref > 0 && Math.abs(flight.block - ref) / ref <= BLOCK_TOLERANCE_PCT;
+    if (withinTolerance(opsBlock) || withinTolerance(perfBlock)) return false;
+    // Also pass if exactly matching the priority value (ops > perf)
     const correctBlock = extractBlock(entry, activeSeason);
     if (!correctBlock || correctBlock <= 0) return false;
     return flight.block !== correctBlock;
@@ -13219,8 +13224,8 @@ function FeasibilityTab() {
 
         const checkItems = [
           { label: "Zero curfew violations (or all waived)", failLevel: "fail",
-            desc: "Checks that all flights depart and arrive within the airport's operating window. Hard curfew violations are errors; quota and noise-managed airports show as warnings.",
-            filter: i => i.category === "Curfew" && i.severity === "error" },
+            desc: "Checks that all flights depart and arrive within the airport's operating window. Hard curfew violations are errors; quota and noise-managed airports show as warnings. Near-curfew buffer warnings (within 30 minutes of boundary) are included.",
+            filter: i => (i.category === "Curfew" && i.severity === "error") || i.category === "Curfew Buffer" },
           { label: "Zero schedule conflicts", failLevel: "fail",
             desc: "Checks for overlapping flight blocks on the same aircraft and day. Two flights cannot occupy the same time slot on one tail.",
             filter: i => i.category === "Conflict" },
@@ -13236,9 +13241,9 @@ function FeasibilityTab() {
           { label: "Weekly rotation closes", failLevel: "warn",
             desc: "Checks that each aircraft ends the week at the same station it starts, so the schedule can repeat week-on-week.",
             filter: i => i.category === "Continuity" },
-          { label: "Block times within 5% of table", failLevel: "warn",
-            desc: "Checks that flight block times don't deviate more than 5% from the route table values.",
-            filter: i => i.category === "Block Mismatch" },
+          { label: "Valid block times", failLevel: "warn",
+            desc: "Checks that all flight block times are validated against the route table. Flags routes not in the table (unvalidated) and flights where block time deviates more than 5% from the operational or performance values.",
+            filter: i => i.category === "Block Mismatch" || i.category === "Unvalidated Block" },
           { label: "Cargo flights have adequate payload", failLevel: "warn",
             desc: "Checks that routes with cargo operations have max payload at the structural maximum. Flags routes where fuel burn constrains payload below 105,000 kg.",
             filter: i => i.category === "Payload" },
