@@ -4974,7 +4974,11 @@ function scheduleReducer(state, action) {
         d.airports.forEach(a => savedApMap.set((a.code || "").toUpperCase(), a));
         mergedAirports = SEED_AIRPORTS.map(seed => {
           const saved = savedApMap.get((seed.code || "").toUpperCase());
-          if (saved) { savedApMap.delete((seed.code || "").toUpperCase()); return { ...seed, ...saved }; }
+          if (saved) {
+            savedApMap.delete((seed.code || "").toUpperCase());
+            // Preserve seed restrictionType/cargoExempt if saved data doesn't have them
+            return { ...seed, ...saved, restrictionType: saved.restrictionType ?? seed.restrictionType, cargoExempt: saved.cargoExempt ?? seed.cargoExempt };
+          }
           return seed;
         });
         savedApMap.forEach(a => mergedAirports.push(a));
@@ -5147,8 +5151,17 @@ function ScheduleProvider({ children }) {
           const merged = [...state.airports];
           cloudAirports.forEach(ca => {
             const idx = merged.findIndex(a => (a.code || "").toUpperCase() === (ca.code || "").toUpperCase());
-            if (idx >= 0) merged[idx] = { ...merged[idx], ...ca, modified: true };
-            else merged.push({ ...ca, modified: true });
+            if (idx >= 0) {
+              // Preserve seed restrictionType/cargoExempt if cloud data doesn't have them
+              const seed = merged[idx];
+              merged[idx] = {
+                ...seed, ...ca, modified: true,
+                restrictionType: ca.restrictionType ?? seed.restrictionType,
+                cargoExempt: ca.cargoExempt ?? seed.cargoExempt,
+              };
+            } else {
+              merged.push({ ...ca, modified: true });
+            }
           });
           dispatch({ type: A.SET_AIRPORTS, airports: merged, _noHistory: true });
         }
@@ -5226,7 +5239,7 @@ function ScheduleProvider({ children }) {
     const ad = AIRPORT_DATA[uc];
     if (!ad) return undefined;
     const w = ad.w ?? 0, s = ad.s ?? ad.w ?? 0;
-    return { code: uc, name: uc, utcOffset: activeSeason === "S" ? s : w, utcOffsetS: s, lat: ad.lat, lon: ad.lon, depOpen: null, depClose: null, arrOpen: null, arrClose: null, notes: "" };
+    return { code: uc, name: uc, utcOffset: activeSeason === "S" ? s : w, utcOffsetS: s, lat: ad.lat, lon: ad.lon, depOpen: null, depClose: null, arrOpen: null, arrClose: null, restrictionType: undefined, notes: "" };
   }, [state.airports, activeSeason]);
 
   // SVG dimensions (depend on aircraft count)
