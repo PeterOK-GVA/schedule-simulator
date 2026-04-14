@@ -13253,7 +13253,7 @@ function FeasibilityTab() {
         ];
 
         const otherIssues = issues.filter(i => !checkItems.some(ci => ci.filter(i)));
-        const statusIcon = { pass: "\u2713", fail: "\u2717", warn: "\u26A0", ack: "\u2713" };
+        const statusIcon = { pass: "✓", fail: "✗", warn: "⚠", ack: "✓" };
         const statusColor = { pass: C.success, fail: C.danger, warn: C.yellowHeavy, ack: "#2563EB" };
         const statusBg = { pass: C.successLight || "#ECFDF5", fail: C.dangerLight, warn: C.warnLight, ack: "#EFF6FF" };
 
@@ -13288,7 +13288,7 @@ function FeasibilityTab() {
                         {allAcked ? `All ${itemIssues.length} acknowledged` : `${unresolvedCount} unresolved / ${itemIssues.length} total`}
                       </span>
                     )}
-                    <span style={{ fontSize: 10, color: C.textMuted }}>{isExpanded ? "\u25BC" : "\u25B6"}</span>
+                    <span style={{ fontSize: 10, color: C.textMuted }}>{isExpanded ? "▼" : "▶"}</span>
                   </button>
                   {isExpanded && (
                     <div style={{ padding: "8px 16px 16px 50px", borderLeft: `3px solid ${sc}40`, marginLeft: 12, background: C.white }}>
@@ -13312,7 +13312,7 @@ function FeasibilityTab() {
                                   title={isAcked ? "Unacknowledge this issue" : "Acknowledge this issue"} />
                                 <span style={{ flex: 1, fontSize: 10, color: C.text, cursor: "pointer", textDecoration: isAcked ? "line-through" : "none" }}
                                   onClick={() => navigateToFlight(issue)} title="Click to view in Gantt">
-                                  <strong>{issue.reg}</strong> {issue.flightNum || "\u2014"} {issue.route} Day {DAY_NAMES[(issue.day || 1) - 1]} \u2014 {issue.detail}
+                                  <strong>{issue.reg}</strong> {issue.flightNum || "—"} {issue.route} Day {DAY_NAMES[(issue.day || 1) - 1]} — {issue.detail}
                                 </span>
                               </div>
                             );
@@ -13344,7 +13344,7 @@ function FeasibilityTab() {
                     }}>i</span>
                     <span style={{ flex: 1 }}>Other findings</span>
                     <span style={{ fontSize: 10, color: C.textMuted }}>{otherUnresolved} of {otherIssues.length} unresolved</span>
-                    <span style={{ fontSize: 10, color: C.textMuted }}>{isExpanded ? "\u25BC" : "\u25B6"}</span>
+                    <span style={{ fontSize: 10, color: C.textMuted }}>{isExpanded ? "▼" : "▶"}</span>
                   </button>
                   {isExpanded && (
                     <div style={{ padding: "8px 16px 16px 50px", borderLeft: `3px solid ${C.brownLight}`, marginLeft: 12, background: C.white }}>
@@ -13368,7 +13368,7 @@ function FeasibilityTab() {
                               <Badge color={sv.color} bg={sv.bg}>{issue.category}</Badge>
                               <span style={{ flex: 1, fontSize: 10, color: C.text, cursor: "pointer", textDecoration: isAcked ? "line-through" : "none" }}
                                 onClick={() => navigateToFlight(issue)} title="Click to view in Gantt">
-                                <strong>{issue.reg}</strong> {issue.flightNum || "\u2014"} {issue.route} Day {DAY_NAMES[(issue.day || 1) - 1]} \u2014 {issue.detail}
+                                <strong>{issue.reg}</strong> {issue.flightNum || "—"} {issue.route} Day {DAY_NAMES[(issue.day || 1) - 1]} — {issue.detail}
                               </span>
                             </div>
                           );
@@ -13385,7 +13385,7 @@ function FeasibilityTab() {
                 const passed = checkItems.filter(ci => issues.filter(ci.filter).length === 0).length;
                 const acked = checkItems.filter(ci => { const ii = issues.filter(ci.filter); return ii.length > 0 && ii.every(i => ackSet.has(`${i.flightId}|${i.category}`)); }).length;
                 const failed = checkItems.length - passed - acked;
-                return `${passed} passed${acked > 0 ? ` \u00B7 ${acked} acknowledged` : ""}${failed > 0 ? ` \u00B7 ${failed} unresolved` : " \u00B7 all clear"}`;
+                return `${passed} passed${acked > 0 ? ` · ${acked} acknowledged` : ""}${failed > 0 ? ` · ${failed} unresolved` : " · all clear"}`;
               })()}
             </div>
           </div>
