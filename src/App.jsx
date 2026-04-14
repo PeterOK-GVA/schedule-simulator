@@ -509,6 +509,8 @@ const MAINT_MIN_WEEKLY_HOURS   = 15;  // minimum ground hours at maint bases per
 const MAINT_MIN_SLOT_HOURS     = 4;   // minimum single continuous slot for a line check
 const MAINT_MAX_DAYS_NO_BASE   = 5;   // warn if aircraft doesn't touch a maint base for this many days
 const CURFEW_BUFFER_MINS       = 30;  // warn when within 30 min of curfew boundary
+const RESTRICTION_LABELS = { none: "None", hard_curfew: "Hard Curfew", quota: "Night Quota", noise_managed: "Noise Managed", prior_approval: "Prior Approval", temporary: "Temporary" };
+const RESTRICTION_COLORS = { hard_curfew: { c: "#DC2626", b: "#FEE2E2" }, quota: { c: "#D97706", b: "#FEF3C7" }, noise_managed: { c: "#2563EB", b: "#EFF6FF" }, prior_approval: { c: "#7C3AED", b: "#F5F3FF" }, temporary: { c: "#EA580C", b: "#FFF7ED" } };
 const MAX_BLOCK_MINS           = 1020; // 17 hours — flag flights exceeding this
 const BLOCK_TOLERANCE_PCT      = 0.05; // 5% tolerance for block time vs table check
 const TURN_COLOR_VIOLATION = C.danger;
@@ -3862,12 +3864,12 @@ const SEED_AIRPORTS = [
   { id:"a6",code:"ALA",name:"Almaty International Airport",utcOffset:5,utcOffsetS:5,lat:43.3521,lon:77.0405,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a7",code:"ALG",name:"Houari Boumediene Airport",utcOffset:1,utcOffsetS:1,lat:36.691,lon:3.2154,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a8",code:"AMD",name:"Sardar Vallabhbhai Patel International A",utcOffset:5.5,utcOffsetS:5.5,lat:23.0772,lon:72.6347,depOpen:360,depClose:1410,arrOpen:360,arrClose:1410,notes:"Night restrictions.",landside:false },
-  { id:"a9",code:"AMM",name:"Queen Alia International Airport",utcOffset:3,utcOffsetS:3,lat:31.7226,lon:35.9932,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
-  { id:"a10",code:"AMS",name:"Amsterdam Airport Schiphol",utcOffset:1,utcOffsetS:2,lat:52.3086,lon:4.7639,depOpen:360,depClose:1380,arrOpen:360,arrClose:1380,notes:"Strict night regime. Cargo slots limited.",landside:false },
+  { id:"a9",code:"AMM",name:"Queen Alia International Airport",utcOffset:3,utcOffsetS:3,lat:31.7226,lon:35.9932,depOpen:null,depClose:null,arrOpen:null,arrClose:null,restrictionType:"temporary",notes:"24/7 operations.",landside:false },
+  { id:"a10",code:"AMS",name:"Amsterdam Airport Schiphol",utcOffset:1,utcOffsetS:2,lat:52.3086,lon:4.7639,depOpen:360,depClose:1380,arrOpen:360,arrClose:1380,restrictionType:"quota",notes:"Strict night regime. Cargo slots limited.",landside:false },
   { id:"a11",code:"ANC",name:"Ted Stevens Anchorage International Airp",utcOffset:-9,utcOffsetS:-8,lat:61.1741,lon:-149.9981,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations. Major cargo tech stop.",landside:false },
   { id:"a12",code:"ARN",name:"Stockholm-Arlanda Airport",utcOffset:1,utcOffsetS:2,lat:59.6519,lon:17.9186,depOpen:360,depClose:1320,arrOpen:360,arrClose:1380,notes:"Night noise restrictions apply.",landside:false },
   { id:"a13",code:"ASU",name:"Silvio Pettirossi International Airport",utcOffset:-3,utcOffsetS:-3,lat:-25.24,lon:-57.52,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
-  { id:"a14",code:"ATH",name:"Eleftherios Venizelos International Airp",utcOffset:2,utcOffsetS:3,lat:37.9364,lon:23.9445,depOpen:360,depClose:1410,arrOpen:360,arrClose:1410,notes:"Night noise restrictions.",landside:false },
+  { id:"a14",code:"ATH",name:"Eleftherios Venizelos International Airp",utcOffset:2,utcOffsetS:3,lat:37.9364,lon:23.9445,depOpen:360,depClose:1410,arrOpen:360,arrClose:1410,restrictionType:"noise_managed",notes:"Night noise restrictions.",landside:false },
   { id:"a15",code:"ATL",name:"Hartsfield/Jackson Atlanta International",utcOffset:-5,utcOffsetS:-4,lat:33.6367,lon:-84.4279,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a16",code:"AUH",name:"Abu Dhabi International Airport",utcOffset:4,utcOffsetS:4,lat:24.433,lon:54.6511,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a17",code:"AZA",name:"Mesa Gateway Airport",utcOffset:-7,utcOffsetS:-7,lat:33.3078,lon:-111.6555,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
@@ -3875,21 +3877,21 @@ const SEED_AIRPORTS = [
   { id:"a19",code:"BCN",name:"Barcelona International Airport",utcOffset:1,utcOffsetS:2,lat:41.2971,lon:2.0785,depOpen:420,depClose:1380,arrOpen:420,arrClose:1380,notes:"Night restrictions for freighters.",landside:false },
   { id:"a20",code:"BEG",name:"Belgrade Nikola Tesla Airport",utcOffset:1,utcOffsetS:2,lat:44.8184,lon:20.3091,depOpen:360,depClose:1410,arrOpen:360,arrClose:1410,notes:"Minimal night restrictions.",landside:false },
   { id:"a21",code:"BEL",name:"Val de Cans/Julio Cezar Ribeiro Internat",utcOffset:-3,utcOffsetS:-3,lat:-1.3793,lon:-48.4763,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
-  { id:"a22",code:"BGY",name:"Bergamo / Orio Al Serio Airport",utcOffset:1,utcOffsetS:2,lat:45.6739,lon:9.7042,depOpen:360,depClose:1380,arrOpen:360,arrClose:1380,notes:"",landside:false },
-  { id:"a23",code:"BHX",name:"Birmingham International Airport",utcOffset:0,utcOffsetS:1,lat:52.4539,lon:-1.748,depOpen:360,depClose:1380,arrOpen:360,arrClose:1410,notes:"Night noise quota. Cargo exemptions possible.",landside:false },
+  { id:"a22",code:"BGY",name:"Bergamo / Orio Al Serio Airport",utcOffset:1,utcOffsetS:2,lat:45.6739,lon:9.7042,depOpen:360,depClose:1380,arrOpen:360,arrClose:1380,restrictionType:"noise_managed",notes:"",landside:false },
+  { id:"a23",code:"BHX",name:"Birmingham International Airport",utcOffset:0,utcOffsetS:1,lat:52.4539,lon:-1.748,depOpen:360,depClose:1380,arrOpen:360,arrClose:1410,restrictionType:"quota",notes:"Night noise quota. Cargo exemptions possible.",landside:false },
   { id:"a24",code:"BKK",name:"Suvarnabhumi Airport",utcOffset:7,utcOffsetS:7,lat:13.6811,lon:100.747,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a25",code:"BLR",name:"Bengaluru International Airport",utcOffset:5.5,utcOffsetS:5.5,lat:13.1979,lon:77.7063,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a26",code:"BNE",name:"Brisbane International Airport",utcOffset:10,utcOffsetS:10,lat:-27.3842,lon:153.117,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a27",code:"BOG",name:"El Dorado International Airport",utcOffset:-5,utcOffsetS:-5,lat:4.7016,lon:-74.1469,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
-  { id:"a28",code:"BOM",name:"Chhatrapati Shivaji International Airpor",utcOffset:5.5,utcOffsetS:5.5,lat:19.0887,lon:72.8679,depOpen:360,depClose:1410,arrOpen:360,arrClose:1410,notes:"",landside:false },
-  { id:"a29",code:"BOS",name:"General Edward Lawrence Logan Internatio",utcOffset:-5,utcOffsetS:-4,lat:42.3629,lon:-71.0064,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
-  { id:"a30",code:"BRU",name:"Brussels Airport",utcOffset:1,utcOffsetS:2,lat:50.5405,lon:4.2904,depOpen:360,depClose:1380,arrOpen:360,arrClose:1380,notes:"",landside:false },
+  { id:"a28",code:"BOM",name:"Chhatrapati Shivaji International Airpor",utcOffset:5.5,utcOffsetS:5.5,lat:19.0887,lon:72.8679,depOpen:360,depClose:1410,arrOpen:360,arrClose:1410,restrictionType:"temporary",notes:"",landside:false },
+  { id:"a29",code:"BOS",name:"General Edward Lawrence Logan Internatio",utcOffset:-5,utcOffsetS:-4,lat:42.3629,lon:-71.0064,depOpen:null,depClose:null,arrOpen:null,arrClose:null,restrictionType:"noise_managed",notes:"24/7 operations.",landside:false },
+  { id:"a30",code:"BRU",name:"Brussels Airport",utcOffset:1,utcOffsetS:2,lat:50.5405,lon:4.2904,depOpen:360,depClose:1380,arrOpen:360,arrClose:1380,restrictionType:"quota",notes:"",landside:false },
   { id:"a31",code:"BSB",name:"Presidente Juscelino Kubistschek Interna",utcOffset:-3,utcOffsetS:-3,lat:-15.8692,lon:-47.9208,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a32",code:"BUD",name:"Budapest Ferenc Liszt International Airp",utcOffset:1,utcOffsetS:2,lat:47.4369,lon:19.2556,depOpen:360,depClose:1380,arrOpen:360,arrClose:1410,notes:"Night restrictions for freighters.",landside:false },
   { id:"a33",code:"CAI",name:"Cairo International Airport",utcOffset:2,utcOffsetS:3,lat:30.1219,lon:31.4056,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a34",code:"CAN",name:"Guangzhou Baiyun International Airport",utcOffset:8,utcOffsetS:8,lat:23.3924,lon:113.299,depOpen:360,depClose:1439,arrOpen:360,arrClose:1439,notes:"",landside:false },
   { id:"a35",code:"CCU",name:"Netaji Subhash Chandra Bose Internationa",utcOffset:5.5,utcOffsetS:5.5,lat:22.6547,lon:88.4467,depOpen:360,depClose:1410,arrOpen:360,arrClose:1410,notes:"Night restrictions.",landside:false },
-  { id:"a36",code:"CDG",name:"Charles de Gaulle International Airport",utcOffset:1,utcOffsetS:2,lat:49.0128,lon:2.55,depOpen:360,depClose:1410,arrOpen:360,arrClose:1410,notes:"",landside:false },
+  { id:"a36",code:"CDG",name:"Charles de Gaulle International Airport",utcOffset:1,utcOffsetS:2,lat:49.0128,lon:2.55,depOpen:360,depClose:1410,arrOpen:360,arrClose:1410,restrictionType:"noise_managed",notes:"",landside:false },
   { id:"a37",code:"CEB",name:"Mactan Cebu International Airport",utcOffset:8,utcOffsetS:8,lat:10.3075,lon:123.979,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a38",code:"CGK",name:"Soekarno-Hatta International Airport",utcOffset:7,utcOffsetS:7,lat:-6.1256,lon:106.656,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a39",code:"CGN",name:"Cologne Bonn Airport",utcOffset:1,utcOffsetS:2,lat:50.8659,lon:7.1427,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 cargo operations. FedEx/UPS hub.",landside:false },
@@ -3903,7 +3905,7 @@ const SEED_AIRPORTS = [
   { id:"a47",code:"COK",name:"Cochin International Airport",utcOffset:5.5,utcOffsetS:5.5,lat:10.152,lon:76.4019,depOpen:360,depClose:1410,arrOpen:360,arrClose:1410,notes:"Night restrictions.",landside:false },
   { id:"a48",code:"CPH",name:"Copenhagen Kastrup Airport",utcOffset:1,utcOffsetS:2,lat:55.6179,lon:12.656,depOpen:360,depClose:1380,arrOpen:360,arrClose:1410,notes:"Night restrictions. Exemptions for delays.",landside:false },
   { id:"a49",code:"CPT",name:"Cape Town International Airport",utcOffset:2,utcOffsetS:2,lat:-33.9648,lon:18.6017,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
-  { id:"a50",code:"CTS",name:"New Chitose Airport",utcOffset:9,utcOffsetS:9,lat:42.7752,lon:141.692,depOpen:420,depClose:1380,arrOpen:420,arrClose:1380,notes:"Night restrictions.",landside:false },
+  { id:"a50",code:"CTS",name:"New Chitose Airport",utcOffset:9,utcOffsetS:9,lat:42.7752,lon:141.692,depOpen:420,depClose:1380,arrOpen:420,arrClose:1380,restrictionType:"quota",notes:"Night restrictions.",landside:false },
   { id:"a51",code:"CTU",name:"Chengdu Shuangliu International Airport",utcOffset:8,utcOffsetS:8,lat:30.5785,lon:103.947,depOpen:360,depClose:1410,arrOpen:360,arrClose:1410,notes:"",landside:false },
   { id:"a52",code:"CUN",name:"Cancun International Airport",utcOffset:-5,utcOffsetS:-5,lat:21.0365,lon:-86.8771,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a53",code:"CUZ",name:"Alejandro Velasco Astete International A",utcOffset:-5,utcOffsetS:-5,lat:-13.5357,lon:-71.9388,depOpen:360,depClose:1080,arrOpen:360,arrClose:1080,notes:"Daylight operations preferred. High altitude terrain.",landside:false },
@@ -3914,14 +3916,14 @@ const SEED_AIRPORTS = [
   { id:"a58",code:"DAD",name:"Da Nang International Airport",utcOffset:7,utcOffsetS:7,lat:16.0439,lon:108.199,depOpen:360,depClose:1380,arrOpen:360,arrClose:1380,notes:"Night restrictions.",landside:false },
   { id:"a59",code:"DAR",name:"Mwalimu Julius K. Nyerere International ",utcOffset:3,utcOffsetS:3,lat:-6.8781,lon:39.2026,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a60",code:"DEL",name:"Indira Gandhi International Airport",utcOffset:5.5,utcOffsetS:5.5,lat:28.5665,lon:77.1031,depOpen:360,depClose:1410,arrOpen:360,arrClose:1410,notes:"",landside:false },
-  { id:"a61",code:"DEN",name:"Denver International Airport",utcOffset:-7,utcOffsetS:-6,lat:39.8617,lon:-104.6732,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
+  { id:"a61",code:"DEN",name:"Denver International Airport",utcOffset:-7,utcOffsetS:-6,lat:39.8617,lon:-104.6732,depOpen:null,depClose:null,arrOpen:null,arrClose:null,restrictionType:"noise_managed",notes:"24/7 operations.",landside:false },
   { id:"a62",code:"DFW",name:"Dallas-Fort Worth International Airport",utcOffset:-6,utcOffsetS:-5,lat:32.8972,lon:-97.0377,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a63",code:"DKR",name:"Leopold Sedar Senghor International Airp",utcOffset:0,utcOffsetS:0,lat:14.7397,lon:-17.4902,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a64",code:"DME",name:"Domodedovo International Airport",utcOffset:3,utcOffsetS:3,lat:55.4088,lon:37.9063,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a65",code:"DMM",name:"King Fahd International Airport",utcOffset:3,utcOffsetS:3,lat:26.4712,lon:49.7979,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a66",code:"DOH",name:"Hamad International Airport",utcOffset:3,utcOffsetS:3,lat:25.2606,lon:51.6138,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations. Major cargo hub.",landside:false },
   { id:"a67",code:"DPS",name:"Ngurah Rai (Bali) International Airport",utcOffset:8,utcOffsetS:8,lat:-8.7482,lon:115.167,depOpen:360,depClose:1410,arrOpen:360,arrClose:1410,notes:"Night restrictions.",landside:false },
-  { id:"a68",code:"DTW",name:"Detroit Metro Wayne County Airport",utcOffset:-5,utcOffsetS:-4,lat:42.2124,lon:-83.3534,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
+  { id:"a68",code:"DTW",name:"Detroit Metro Wayne County Airport",utcOffset:-5,utcOffsetS:-4,lat:42.2124,lon:-83.3534,depOpen:null,depClose:null,arrOpen:null,arrClose:null,restrictionType:"noise_managed",notes:"24/7 operations.",landside:false },
   { id:"a69",code:"DUB",name:"Dublin Airport",utcOffset:0,utcOffsetS:1,lat:53.4213,lon:-6.2701,depOpen:360,depClose:1410,arrOpen:360,arrClose:1410,notes:"Voluntary night noise procedures.",landside:false },
   { id:"a70",code:"DUR",name:"King Shaka International Airport",utcOffset:2,utcOffsetS:2,lat:-29.6144,lon:31.1197,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a71",code:"DUS",name:"Dusseldorf International Airport",utcOffset:1,utcOffsetS:2,lat:51.2895,lon:6.7668,depOpen:360,depClose:1320,arrOpen:360,arrClose:1320,notes:"",landside:false },
@@ -3930,14 +3932,14 @@ const SEED_AIRPORTS = [
   { id:"a74",code:"EBB",name:"Entebbe International Airport",utcOffset:3,utcOffsetS:3,lat:0.0424,lon:32.4435,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a75",code:"EDI",name:"Edinburgh Airport",utcOffset:0,utcOffsetS:1,lat:55.95,lon:-3.3725,depOpen:360,depClose:1380,arrOpen:360,arrClose:1410,notes:"Night noise restrictions.",landside:false },
   { id:"a76",code:"EHU",name:"Ezhou Huahu Airport",utcOffset:8,utcOffsetS:8,lat:30.3429,lon:115.0296,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 cargo hub. SF Express hub.",landside:false },
-  { id:"a77",code:"EMA",name:"East Midlands Airport",utcOffset:0,utcOffsetS:1,lat:52.8311,lon:-1.3281,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 cargo hub. DHL/UPS.",landside:false },
+  { id:"a77",code:"EMA",name:"East Midlands Airport",utcOffset:0,utcOffsetS:1,lat:52.8311,lon:-1.3281,depOpen:null,depClose:null,arrOpen:null,arrClose:null,restrictionType:"quota",notes:"24/7 cargo hub. DHL/UPS.",landside:false },
   { id:"a78",code:"EVN",name:"Zvartnots International Airport",utcOffset:4,utcOffsetS:4,lat:40.1473,lon:44.3959,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a79",code:"EWR",name:"Newark Liberty International Airport",utcOffset:-5,utcOffsetS:-4,lat:40.6925,lon:-74.1687,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a80",code:"EZE",name:"Ministro Pistarini International Airport",utcOffset:-3,utcOffsetS:-3,lat:-34.8222,lon:-58.5358,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
-  { id:"a81",code:"FCO",name:"Leonardo Da Vinci (Fiumicino) Internatio",utcOffset:1,utcOffsetS:2,lat:41.8045,lon:12.2508,depOpen:360,depClose:1380,arrOpen:360,arrClose:1380,notes:"",landside:false },
+  { id:"a81",code:"FCO",name:"Leonardo Da Vinci (Fiumicino) Internatio",utcOffset:1,utcOffsetS:2,lat:41.8045,lon:12.2508,depOpen:360,depClose:1380,arrOpen:360,arrClose:1380,restrictionType:"noise_managed",notes:"",landside:false },
   { id:"a82",code:"FLL",name:"Fort Lauderdale/Hollywood International ",utcOffset:-5,utcOffsetS:-4,lat:26.0717,lon:-80.1497,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a83",code:"FOR",name:"Pinto Martins International Airport",utcOffset:-3,utcOffsetS:-3,lat:-3.7763,lon:-38.5326,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
-  { id:"a84",code:"FRA",name:"Frankfurt am Main International Airport",utcOffset:1,utcOffsetS:2,lat:50.0264,lon:8.5431,depOpen:300,depClose:1380,arrOpen:300,arrClose:1380,notes:"",landside:false },
+  { id:"a84",code:"FRA",name:"Frankfurt am Main International Airport",utcOffset:1,utcOffsetS:2,lat:50.0264,lon:8.5431,depOpen:300,depClose:1380,arrOpen:300,arrClose:1380,restrictionType:"hard_curfew",notes:"",landside:false },
   { id:"a85",code:"FUK",name:"Fukuoka Airport",utcOffset:9,utcOffsetS:9,lat:33.5859,lon:130.451,depOpen:420,depClose:1320,arrOpen:420,arrClose:1320,notes:"Night curfew.",landside:false },
   { id:"a86",code:"GDL",name:"Don Miguel Hidalgo Y Costilla Internatio",utcOffset:-6,utcOffsetS:-6,lat:20.5218,lon:-103.311,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a87",code:"GIG",name:"Galeao - Antonio Carlos Jobim Internatio",utcOffset:-3,utcOffsetS:-3,lat:-22.81,lon:-43.2506,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
@@ -3948,7 +3950,7 @@ const SEED_AIRPORTS = [
   { id:"a92",code:"HAM",name:"Hamburg Airport",utcOffset:1,utcOffsetS:2,lat:53.6304,lon:9.9882,depOpen:360,depClose:1380,arrOpen:360,arrClose:1380,notes:"Strict night curfew.",landside:false },
   { id:"a93",code:"HAN",name:"Noi Bai International Airport",utcOffset:7,utcOffsetS:7,lat:21.2212,lon:105.807,depOpen:360,depClose:1439,arrOpen:360,arrClose:1439,notes:"",landside:false },
   { id:"a94",code:"HAV",name:"Jose Marti International Airport",utcOffset:-5,utcOffsetS:-4,lat:22.9892,lon:-82.4091,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
-  { id:"a95",code:"HEL",name:"Helsinki Vantaa Airport",utcOffset:2,utcOffsetS:3,lat:60.3172,lon:24.9633,depOpen:360,depClose:1380,arrOpen:360,arrClose:1410,notes:"Night noise procedures.",landside:false },
+  { id:"a95",code:"HEL",name:"Helsinki Vantaa Airport",utcOffset:2,utcOffsetS:3,lat:60.3172,lon:24.9633,depOpen:360,depClose:1380,arrOpen:360,arrClose:1410,restrictionType:"noise_managed",notes:"Night noise procedures.",landside:false },
   { id:"a96",code:"HHN",name:"Frankfurt-Hahn Airport",utcOffset:1,utcOffsetS:2,lat:49.9487,lon:7.2639,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 cargo operations.",landside:false },
   { id:"a97",code:"HKG",name:"Chek Lap Kok International Airport",utcOffset:8,utcOffsetS:8,lat:22.3089,lon:113.915,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a98",code:"HND",name:"Tokyo International Airport",utcOffset:9,utcOffsetS:9,lat:35.5523,lon:139.78,depOpen:360,depClose:1380,arrOpen:360,arrClose:1380,notes:"Strict curfew. Use NRT for night cargo.",landside:false },
@@ -3981,14 +3983,14 @@ const SEED_AIRPORTS = [
   { id:"a125",code:"LEJ",name:"Leipzig Halle Airport",utcOffset:1,utcOffsetS:2,lat:51.4324,lon:12.2416,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 cargo hub. DHL European hub.",landside:false },
   { id:"a126",code:"LGG",name:"Liege Airport",utcOffset:1,utcOffsetS:2,lat:50.3811,lon:5.2634,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 cargo hub. Key MSC hub.",landside:false },
   { id:"a127",code:"LHE",name:"Alama Iqbal International Airport",utcOffset:5,utcOffsetS:5,lat:31.5216,lon:74.4036,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
-  { id:"a128",code:"LHR",name:"London Heathrow Airport",utcOffset:0,utcOffsetS:1,lat:51.4706,lon:-0.4619,depOpen:360,depClose:1380,arrOpen:270,arrClose:1410,notes:"Night quota count system. Cargo heavily restricted at night.",landside:false },
+  { id:"a128",code:"LHR",name:"London Heathrow Airport",utcOffset:0,utcOffsetS:1,lat:51.4706,lon:-0.4619,depOpen:360,depClose:1380,arrOpen:270,arrClose:1410,restrictionType:"quota",notes:"Night quota count system. Cargo heavily restricted at night.",landside:false },
   { id:"a129",code:"LIM",name:"Jorge Chavez International Airport",utcOffset:-5,utcOffsetS:-5,lat:-12.0219,lon:-77.1143,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a130",code:"LIS",name:"Lisbon Portela Airport",utcOffset:0,utcOffsetS:1,lat:38.7813,lon:-9.1359,depOpen:360,depClose:1410,arrOpen:360,arrClose:1410,notes:"Night noise measures apply.",landside:false },
   { id:"a131",code:"LJU",name:"Ljubljana Joze Pucnik Airport",utcOffset:1,utcOffsetS:2,lat:46.2237,lon:14.4576,depOpen:360,depClose:1380,arrOpen:360,arrClose:1380,notes:"Night restrictions.",landside:false },
   { id:"a132",code:"LOS",name:"Murtala Muhammed International Airport",utcOffset:1,utcOffsetS:1,lat:6.5774,lon:3.3212,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a133",code:"LUN",name:"Kenneth Kaunda International Airport",utcOffset:2,utcOffsetS:2,lat:-15.3308,lon:28.4526,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a134",code:"MAA",name:"Chennai International Airport",utcOffset:5.5,utcOffsetS:5.5,lat:12.99,lon:80.1693,depOpen:360,depClose:1410,arrOpen:360,arrClose:1410,notes:"Night restrictions.",landside:false },
-  { id:"a135",code:"MAD",name:"Madrid Barajas International Airport",utcOffset:1,utcOffsetS:2,lat:40.4936,lon:-3.5668,depOpen:360,depClose:1410,arrOpen:360,arrClose:1410,notes:"Night restrictions. Exemptions for cargo available.",landside:false },
+  { id:"a135",code:"MAD",name:"Madrid Barajas International Airport",utcOffset:1,utcOffsetS:2,lat:40.4936,lon:-3.5668,depOpen:360,depClose:1410,arrOpen:360,arrClose:1410,restrictionType:"noise_managed",notes:"Night restrictions. Exemptions for cargo available.",landside:false },
   { id:"a136",code:"MAN",name:"Manchester Airport",utcOffset:0,utcOffsetS:1,lat:53.3537,lon:-2.275,depOpen:360,depClose:1380,arrOpen:360,arrClose:1410,notes:"Night noise quota system. Cargo exemptions possible.",landside:false },
   { id:"a137",code:"MAO",name:"Eduardo Gomes International Airport",utcOffset:-4,utcOffsetS:-4,lat:-3.0386,lon:-60.0497,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a138",code:"MBA",name:"Mombasa Moi International Airport",utcOffset:3,utcOffsetS:3,lat:-4.0348,lon:39.5942,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
@@ -4007,17 +4009,17 @@ const SEED_AIRPORTS = [
   { id:"a151",code:"MSP",name:"Minneapolis-St Paul International/Wold-C",utcOffset:-6,utcOffsetS:-5,lat:44.882,lon:-93.2218,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a152",code:"MST",name:"Maastricht Aachen Airport",utcOffset:1,utcOffsetS:2,lat:50.9117,lon:5.7701,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"Cargo-friendly. Night operations permitted.",landside:false },
   { id:"a153",code:"MTY",name:"General Mariano Escobedo International A",utcOffset:-6,utcOffsetS:-6,lat:25.7785,lon:-100.107,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
-  { id:"a154",code:"MUC",name:"Munich International Airport",utcOffset:1,utcOffsetS:2,lat:48.3538,lon:11.7861,depOpen:360,depClose:1380,arrOpen:360,arrClose:1380,notes:"",landside:false },
+  { id:"a154",code:"MUC",name:"Munich International Airport",utcOffset:1,utcOffsetS:2,lat:48.3538,lon:11.7861,depOpen:360,depClose:1380,arrOpen:360,arrClose:1380,restrictionType:"hard_curfew",notes:"",landside:false },
   { id:"a155",code:"MVD",name:"Carrasco International /General C L Beri",utcOffset:-3,utcOffsetS:-3,lat:-34.8384,lon:-56.0308,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a156",code:"MXP",name:"Malpensa International Airport",utcOffset:1,utcOffsetS:2,lat:45.6306,lon:8.7281,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"No formal curfew. Key MSC hub.",landside:false },
   { id:"a157",code:"NAN",name:"Nadi International Airport",utcOffset:12,utcOffsetS:12,lat:-17.7554,lon:177.443,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a158",code:"NBO",name:"Jomo Kenyatta International Airport",utcOffset:3,utcOffsetS:3,lat:-1.3192,lon:36.9278,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a159",code:"NGO",name:"Chubu Centrair International Airport",utcOffset:9,utcOffsetS:9,lat:34.8584,lon:136.805,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations. Artificial island.",landside:false },
   { id:"a160",code:"NLU",name:"Santa Lucia Air Force Base",utcOffset:-6,utcOffsetS:-6,lat:19.7553,lon:-99.0164,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
-  { id:"a161",code:"NRT",name:"Narita International Airport",utcOffset:9,utcOffsetS:9,lat:35.7647,lon:140.386,depOpen:360,depClose:1380,arrOpen:360,arrClose:1380,notes:"",landside:false },
+  { id:"a161",code:"NRT",name:"Narita International Airport",utcOffset:9,utcOffsetS:9,lat:35.7647,lon:140.386,depOpen:360,depClose:1380,arrOpen:360,arrClose:1380,restrictionType:"hard_curfew",notes:"",landside:false },
   { id:"a162",code:"ORD",name:"Chicago O\'Hare International Airport",utcOffset:-6,utcOffsetS:-5,lat:41.9769,lon:-87.9082,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a163",code:"ORK",name:"Cork Airport",utcOffset:0,utcOffsetS:1,lat:51.8413,lon:-8.4911,depOpen:360,depClose:1380,arrOpen:360,arrClose:1410,notes:"Night noise restrictions.",landside:false },
-  { id:"a164",code:"OSL",name:"Oslo Gardermoen Airport",utcOffset:1,utcOffsetS:2,lat:60.1939,lon:11.1004,depOpen:360,depClose:1380,arrOpen:360,arrClose:1380,notes:"Night restrictions for freighters.",landside:false },
+  { id:"a164",code:"OSL",name:"Oslo Gardermoen Airport",utcOffset:1,utcOffsetS:2,lat:60.1939,lon:11.1004,depOpen:360,depClose:1380,arrOpen:360,arrClose:1380,restrictionType:"hard_curfew",notes:"Night restrictions for freighters.",landside:false },
   { id:"a165",code:"OTP",name:"Henri Coanda International Airport",utcOffset:2,utcOffsetS:3,lat:44.5722,lon:26.1022,depOpen:360,depClose:1380,arrOpen:360,arrClose:1410,notes:"Night restrictions.",landside:false },
   { id:"a166",code:"PDX",name:"Portland International Airport",utcOffset:-8,utcOffsetS:-7,lat:45.5887,lon:-122.5969,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a167",code:"PEK",name:"Beijing Capital International Airport",utcOffset:8,utcOffsetS:8,lat:40.0801,lon:116.585,depOpen:360,depClose:1410,arrOpen:360,arrClose:1410,notes:"Night restrictions for freighters.",landside:false },
@@ -4043,8 +4045,8 @@ const SEED_AIRPORTS = [
   { id:"a188",code:"SCL",name:"Comodoro Arturo Merino Benitez Internati",utcOffset:-3,utcOffsetS:-4,lat:-33.393,lon:-70.7858,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a189",code:"SDF",name:"Louisville Muhammad Ali International Ai",utcOffset:-5,utcOffsetS:-4,lat:38.1741,lon:-85.7365,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations. UPS Worldport.",landside:false },
   { id:"a190",code:"SDQ",name:"Las Americas International Airport",utcOffset:-4,utcOffsetS:-4,lat:18.4297,lon:-69.6689,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
-  { id:"a191",code:"SEA",name:"Seattle-Tacoma International Airport",utcOffset:-8,utcOffsetS:-7,lat:47.4499,lon:-122.3118,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
-  { id:"a192",code:"SFO",name:"San Francisco International Airport",utcOffset:-8,utcOffsetS:-7,lat:37.6188,lon:-122.3754,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
+  { id:"a191",code:"SEA",name:"Seattle-Tacoma International Airport",utcOffset:-8,utcOffsetS:-7,lat:47.4499,lon:-122.3118,depOpen:null,depClose:null,arrOpen:null,arrClose:null,restrictionType:"noise_managed",notes:"24/7 operations.",landside:false },
+  { id:"a192",code:"SFO",name:"San Francisco International Airport",utcOffset:-8,utcOffsetS:-7,lat:37.6188,lon:-122.3754,depOpen:null,depClose:null,arrOpen:null,arrClose:null,restrictionType:"noise_managed",notes:"24/7 operations.",landside:false },
   { id:"a193",code:"SGN",name:"Tan Son Nhat International Airport",utcOffset:7,utcOffsetS:7,lat:10.8188,lon:106.652,depOpen:360,depClose:1410,arrOpen:360,arrClose:1410,notes:"Night restrictions.",landside:false },
   { id:"a194",code:"SHJ",name:"Sharjah International Airport",utcOffset:4,utcOffsetS:4,lat:25.3286,lon:55.5172,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations. Cargo hub.",landside:false },
   { id:"a195",code:"SIN",name:"Singapore Changi International Airport",utcOffset:8,utcOffsetS:8,lat:1.3502,lon:103.994,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations. Major cargo hub.",landside:false },
@@ -4052,16 +4054,16 @@ const SEED_AIRPORTS = [
   { id:"a197",code:"SJU",name:"Luis Munoz Marin International Airport",utcOffset:-4,utcOffsetS:-4,lat:18.4394,lon:-66.0021,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a198",code:"SKG",name:"Thessaloniki Macedonia International Air",utcOffset:2,utcOffsetS:3,lat:40.5197,lon:22.9709,depOpen:360,depClose:1410,arrOpen:360,arrClose:1410,notes:"Night restrictions.",landside:false },
   { id:"a199",code:"SOF",name:"Sofia Airport",utcOffset:2,utcOffsetS:3,lat:42.6967,lon:23.4114,depOpen:360,depClose:1380,arrOpen:360,arrClose:1410,notes:"Night restrictions.",landside:false },
-  { id:"a200",code:"STN",name:"London Stansted Airport",utcOffset:0,utcOffsetS:1,lat:51.885,lon:0.235,depOpen:360,depClose:1410,arrOpen:360,arrClose:1410,notes:"Night quota system. Limited night slots.",landside:false },
+  { id:"a200",code:"STN",name:"London Stansted Airport",utcOffset:0,utcOffsetS:1,lat:51.885,lon:0.235,depOpen:360,depClose:1410,arrOpen:360,arrClose:1410,restrictionType:"quota",notes:"Night quota system. Limited night slots.",landside:false },
   { id:"a201",code:"STR",name:"Stuttgart Airport",utcOffset:1,utcOffsetS:2,lat:48.6899,lon:9.222,depOpen:360,depClose:1380,arrOpen:360,arrClose:1380,notes:"Strict night curfew.",landside:false },
   { id:"a202",code:"SUB",name:"Juanda International Airport",utcOffset:7,utcOffsetS:7,lat:-7.3798,lon:112.787,depOpen:360,depClose:1410,arrOpen:360,arrClose:1410,notes:"Night restrictions.",landside:false },
   { id:"a203",code:"SVO",name:"Sheremetyevo International Airport",utcOffset:3,utcOffsetS:3,lat:55.9726,lon:37.4146,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
-  { id:"a204",code:"SYD",name:"Sydney Kingsford Smith International Air",utcOffset:11,utcOffsetS:10,lat:-33.9461,lon:151.177,depOpen:360,depClose:1380,arrOpen:360,arrClose:1380,notes:"",landside:false },
+  { id:"a204",code:"SYD",name:"Sydney Kingsford Smith International Air",utcOffset:11,utcOffsetS:10,lat:-33.9461,lon:151.177,depOpen:360,depClose:1380,arrOpen:360,arrClose:1380,restrictionType:"hard_curfew",notes:"",landside:false },
   { id:"a205",code:"SZX",name:"Shenzhen Bao\'an International Airport",utcOffset:8,utcOffsetS:8,lat:22.6393,lon:113.811,depOpen:360,depClose:1410,arrOpen:360,arrClose:1410,notes:"",landside:false },
   { id:"a206",code:"TAS",name:"Tashkent International Airport",utcOffset:5,utcOffsetS:5,lat:41.2579,lon:69.2812,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a207",code:"TBS",name:"Tbilisi International Airport",utcOffset:4,utcOffsetS:4,lat:41.6692,lon:44.9547,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a208",code:"TLL",name:"Tallinn Airport",utcOffset:2,utcOffsetS:3,lat:59.4133,lon:24.8328,depOpen:360,depClose:1380,arrOpen:360,arrClose:1410,notes:"Night restrictions.",landside:false },
-  { id:"a209",code:"TLV",name:"Ben Gurion International Airport",utcOffset:2,utcOffsetS:3,lat:32.0114,lon:34.8867,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
+  { id:"a209",code:"TLV",name:"Ben Gurion International Airport",utcOffset:2,utcOffsetS:3,lat:32.0114,lon:34.8867,depOpen:null,depClose:null,arrOpen:null,arrClose:null,restrictionType:"hard_curfew",notes:"24/7 operations.",landside:false },
   { id:"a210",code:"TNA",name:"Yaoqiang Airport",utcOffset:8,utcOffsetS:8,lat:36.8572,lon:117.216,depOpen:360,depClose:1410,arrOpen:360,arrClose:1410,notes:"Night restrictions.",landside:false },
   { id:"a211",code:"TNR",name:"Ivato Airport",utcOffset:3,utcOffsetS:3,lat:-18.7969,lon:47.4788,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a212",code:"TPA",name:"Tampa International Airport",utcOffset:-5,utcOffsetS:-4,lat:27.9755,lon:-82.5332,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
@@ -4080,12 +4082,12 @@ const SEED_AIRPORTS = [
   { id:"a226",code:"YHZ",name:"Halifax Robert L. Stanfield Internationa",utcOffset:-4,utcOffsetS:-3,lat:44.8808,lon:-63.5086,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a227",code:"YOW",name:"Ottawa / Macdonald-Cartier International",utcOffset:-5,utcOffsetS:-4,lat:45.3225,lon:-75.6692,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
   { id:"a228",code:"YUL",name:"Montréal-Pierre Elliott Trudeau Internat",utcOffset:-5,utcOffsetS:-4,lat:45.4706,lon:-73.7408,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
-  { id:"a229",code:"YVR",name:"Vancouver International Airport",utcOffset:-8,utcOffsetS:-7,lat:49.1939,lon:-123.184,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
+  { id:"a229",code:"YVR",name:"Vancouver International Airport",utcOffset:-8,utcOffsetS:-7,lat:49.1939,lon:-123.184,depOpen:null,depClose:null,arrOpen:null,arrClose:null,restrictionType:"prior_approval",notes:"24/7 operations.",landside:false },
   { id:"a230",code:"YYC",name:"Calgary International Airport",utcOffset:-7,utcOffsetS:-6,lat:51.1139,lon:-114.02,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
-  { id:"a231",code:"YYZ",name:"Toronto Pearson International Airport",utcOffset:-5,utcOffsetS:-4,lat:43.6772,lon:-79.6306,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 operations.",landside:false },
+  { id:"a231",code:"YYZ",name:"Toronto Pearson International Airport",utcOffset:-5,utcOffsetS:-4,lat:43.6772,lon:-79.6306,depOpen:null,depClose:null,arrOpen:null,arrClose:null,restrictionType:"quota",notes:"24/7 operations.",landside:false },
   { id:"a232",code:"ZAG",name:"Zagreb Airport",utcOffset:1,utcOffsetS:2,lat:45.7429,lon:16.0688,depOpen:360,depClose:1380,arrOpen:360,arrClose:1410,notes:"Night restrictions.",landside:false },
   { id:"a233",code:"ZAZ",name:"Zaragoza Air Base",utcOffset:1,utcOffsetS:2,lat:41.6662,lon:-1.0415,depOpen:null,depClose:null,arrOpen:null,arrClose:null,notes:"24/7 cargo hub. Inditex logistics.",landside:false },
-  { id:"a234",code:"ZRH",name:"Zurich Airport",utcOffset:1,utcOffsetS:2,lat:47.4647,lon:8.5492,depOpen:360,depClose:1380,arrOpen:360,arrClose:1380,notes:"",landside:false },
+  { id:"a234",code:"ZRH",name:"Zurich Airport",utcOffset:1,utcOffsetS:2,lat:47.4647,lon:8.5492,depOpen:360,depClose:1380,arrOpen:360,arrClose:1380,restrictionType:"hard_curfew",notes:"",landside:false },
 ];
 
 const SEED_FLIGHTS = [
@@ -5700,15 +5702,30 @@ function useScheduleValidation() {
       if (ap.cargoExempt && isCargo) return;
 
       const lt = localTime(utcMins, ap.utcOffset);
+      const rType = ap.restrictionType || "hard_curfew"; // default to hard_curfew if window is set but no type
       const outside = open <= close
         ? (lt < open || lt > close)
         : (lt < open && lt > close);
+
       if (outside) {
-        errors.push(`${label} ${ap.code} ${toHHMM(lt)} local — ops ${toHHMM(open)}–${toHHMM(close)}`);
+        // Severity depends on restriction type
+        if (rType === "hard_curfew") {
+          errors.push(`${label} ${ap.code} ${toHHMM(lt)} local — ops ${toHHMM(open)}–${toHHMM(close)}`);
+        } else if (rType === "quota") {
+          warnings.push(`${label} ${ap.code} ${toHHMM(lt)} local — night quota system (ops ${toHHMM(open)}–${toHHMM(close)}). Verify slot availability with airport coordinator.`);
+        } else if (rType === "prior_approval") {
+          warnings.push(`${label} ${ap.code} ${toHHMM(lt)} local — prior approval required for night ops (ops ${toHHMM(open)}–${toHHMM(close)})`);
+        } else if (rType === "temporary") {
+          warnings.push(`${label} ${ap.code} ${toHHMM(lt)} local — temporary restriction active (ops ${toHHMM(open)}–${toHHMM(close)}). Check current NOTAM status.`);
+        } else if (rType === "noise_managed") {
+          warnings.push(`${label} ${ap.code} ${toHHMM(lt)} local — noise-managed airport, preferential procedures at night (ops ${toHHMM(open)}–${toHHMM(close)})`);
+        } else {
+          errors.push(`${label} ${ap.code} ${toHHMM(lt)} local — ops ${toHHMM(open)}–${toHHMM(close)}`);
+        }
         return;
       }
       // Near-curfew buffer warning (inside window but close to boundary)
-      if (CURFEW_BUFFER_MINS > 0) {
+      if (CURFEW_BUFFER_MINS > 0 && (rType === "hard_curfew" || rType === "quota")) {
         const distToOpen = open <= close
           ? (lt - open + DAY_MINS) % DAY_MINS
           : (lt >= open ? lt - open : lt + DAY_MINS - open);
@@ -11832,6 +11849,7 @@ function AirportsTab() {
         depOpen: toMins(editing.depOpenStr), depClose: toMins(editing.depCloseStr),
         arrOpen: toMins(editing.arrOpenStr), arrClose: toMins(editing.arrCloseStr),
         cargoExempt: editing.cargoExempt || false,
+        restrictionType: editing.restrictionType || "none",
         notes: editing.notes || "",
       },
     });
@@ -11968,6 +11986,7 @@ function AirportsTab() {
               <th style={{ ...thS, color: C.yellowHeavy }}>Arr Open</th>
               <th style={{ ...thS, color: C.yellowHeavy }}>Arr Close</th>
               <th style={{ ...thS, color: C.success }}>Cargo Exempt</th>
+              <th style={{ ...thS, color: C.brownDark }}>Restriction</th>
               <th style={thS}>Notes</th>
               <th style={thS} />
             </tr>
@@ -12023,6 +12042,18 @@ function AirportsTab() {
                         style={{ width: 14, height: 14, cursor: "pointer", accentColor: C.success }} />
                     </td>
                     <td style={tdS}>
+                      <select value={editing.restrictionType || "none"}
+                        onChange={e => setEditing({ ...editing, restrictionType: e.target.value })}
+                        style={{ ...iStyle, width: 100, fontSize: 9, padding: "4px 4px" }}>
+                        <option value="none">None</option>
+                        <option value="hard_curfew">Hard Curfew</option>
+                        <option value="quota">Night Quota</option>
+                        <option value="noise_managed">Noise Managed</option>
+                        <option value="prior_approval">Prior Approval</option>
+                        <option value="temporary">Temporary</option>
+                      </select>
+                    </td>
+                    <td style={tdS}>
                       <input style={{ ...iStyle, width: 140 }} placeholder="Cargo-specific rules…" value={editing.notes || ""}
                         onChange={e => setEditing({ ...editing, notes: e.target.value })} />
                     </td>
@@ -12060,6 +12091,14 @@ function AirportsTab() {
                     </>)}
                     <td style={{ ...tdS, textAlign: "center" }}>
                       {ap.cargoExempt ? <Badge color={C.success} bg={C.successLight || "#ECFDF5"}>✓</Badge> : <span style={{ color: C.textMuted }}>—</span>}
+                    </td>
+                    <td style={{ ...tdS, textAlign: "center" }}>
+                      {(() => {
+                        const rt = ap.restrictionType || "none";
+                        if (rt === "none") return <span style={{ color: C.textMuted }}>—</span>;
+                        const s = RESTRICTION_COLORS[rt] || { c: C.textMuted, b: C.offWhite2 };
+                        return <Badge color={s.c} bg={s.b}>{RESTRICTION_LABELS[rt] || rt}</Badge>;
+                      })()}
                     </td>
                     <td style={{ ...tdS, fontSize: 10, color: C.textSoft, maxWidth: 160 }}>{ap.notes || ""}</td>
                     <td style={tdS}><GhostBtn onClick={() => startEdit(ap)}>Edit</GhostBtn></td>
@@ -13387,6 +13426,7 @@ function FeasibilityTab() {
                     <th style={thC}>Arr Open</th>
                     <th style={thC}>Arr Close</th>
                     <th style={{ ...thC, color: C.success }}>Cargo Exempt</th>
+                    <th style={thC}>Restriction Type</th>
                     <th style={thC}>Notes</th>
                   </tr>
                 </thead>
@@ -13400,6 +13440,14 @@ function FeasibilityTab() {
                       <td style={{ ...tdC, fontFamily: FONT }}>{ap.arrOpen != null ? toHHMM(ap.arrOpen) : "—"}</td>
                       <td style={{ ...tdC, fontFamily: FONT }}>{ap.arrClose != null ? toHHMM(ap.arrClose) : "—"}</td>
                       <td style={{ ...tdC, textAlign: "center" }}>{ap.cargoExempt ? <span style={{ color: C.success, fontWeight: 700 }}>✓</span> : "—"}</td>
+                      <td style={{ ...tdC, textAlign: "center" }}>
+                        {(() => {
+                          const rt = ap.restrictionType || "none";
+                          if (rt === "none") return <span style={{ color: C.textMuted }}>—</span>;
+                          const s = RESTRICTION_COLORS[rt] || { c: C.textMuted, b: C.offWhite2 };
+                          return <Badge color={s.c} bg={s.b}>{RESTRICTION_LABELS[rt] || rt}</Badge>;
+                        })()}
+                      </td>
                       <td style={{ ...tdC, fontSize: 9, color: C.textMuted, fontStyle: "italic" }}>{ap.notes || ""}</td>
                     </tr>
                   ))}
