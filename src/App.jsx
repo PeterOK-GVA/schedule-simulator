@@ -5417,12 +5417,14 @@ function useCloudScenarios() {
       payload.author   = meta?.author   ?? existing?.author   ?? "";
       payload.weekNum  = meta?.weekNum  ?? existing?.weekNum  ?? null;
       payload.weekYear = meta?.weekYear ?? existing?.weekYear ?? null;
+      payload.acknowledgedIssues = meta?.acknowledgedIssues ?? existing?.acknowledgedIssues ?? [];
     } catch {
       payload.notes    = meta?.notes    ?? "";
       payload.month    = meta?.month    ?? "";
       payload.author   = meta?.author   ?? "";
       payload.weekNum  = meta?.weekNum  ?? null;
       payload.weekYear = meta?.weekYear ?? null;
+      payload.acknowledgedIssues = meta?.acknowledgedIssues ?? [];
     }
     await fsSet("scenarios", id, payload);
     setSaving(false);
@@ -5439,6 +5441,7 @@ function useCloudScenarios() {
       author: meta.author || "",
       weekNum: meta.weekNum ?? null,
       weekYear: meta.weekYear ?? null,
+      acknowledgedIssues: meta.acknowledgedIssues || [],
       flights: (state.flights || []).map(f => ({
         id: f.id, acId: f.acId, route: f.route, dep: f.dep, block: f.block,
         type: f.type, flightNum: f.flightNum, day: f.day,
@@ -13198,222 +13201,190 @@ function FeasibilityTab() {
           cursor: "pointer", fontSize: 9, color: C.textMuted, fontFamily: FONT, marginBottom: 12,
         }}>Show validation capabilities</button>
       )}
-      {/* ── Schedule Readiness Checklist ── */}
+      {/* ── Checklist-Centred Feasibility View ── */}
       {(() => {
-        // Auto-evaluate the 9 checklist items from the issues list
-        const curfewErrors = issues.filter(i => i.category === "Curfew" && i.severity === "error").length;
-        const conflictCount = issues.filter(i => i.category === "Conflict").length;
-        const connectCount = issues.filter(i => i.category === "Connectivity").length;
-        const turnViolations = issues.filter(i => i.category === "Turnaround" && i.severity === "error").length;
-        const maintErrors = issues.filter(i => i.category === "Maintenance" && i.severity === "error").length;
-        const continuityCt = issues.filter(i => i.category === "Continuity").length;
-        const ultraLong = issues.filter(i => i.category === "Ultra-Long").length;
-
-        // Block time tolerance check: flights in table with >5% deviation
-        const blockDevFlights = flights.filter(f => {
-          if (f.acId === POOL_AC_ID) return false;
-          const entry = lookupBlockEntry(f.route, flightAoc(f.acId), f.flightNum);
-          if (!entry) return false;
-          const tableBlock = extractBlock(entry, activeSeason);
-          if (!tableBlock || tableBlock <= 0) return false;
-          return Math.abs(f.block - tableBlock) / tableBlock > BLOCK_TOLERANCE_PCT;
-        });
-
-        // Cargo flights where route payload < structural max
-        const payloadConstrained = flights.filter(f => {
-          if (f.acId === POOL_AC_ID) return false;
-          if (f.cargoOp === "none" || f.type === "P" || f.type === "M") return false;
-          const entry = lookupBlockEntry(f.route, flightAoc(f.acId), f.flightNum);
-          const routePayload = entry ? extractPayload(entry, activeSeason) : null;
-          return routePayload != null && routePayload < (FUEL_MODELS?.structMax || 105000);
-        });
-
-        const items = [
-          { label: "Zero curfew violations (or all waived)", status: curfewErrors === 0 ? "pass" : "fail", count: curfewErrors },
-          { label: "Zero schedule conflicts", status: conflictCount === 0 ? "pass" : "fail", count: conflictCount },
-          { label: "Zero connectivity breaks", status: connectCount === 0 ? "pass" : "fail", count: connectCount },
-          { label: "All turnarounds meet minimums", status: turnViolations === 0 ? "pass" : "fail", count: turnViolations },
-          { label: "All aircraft visit a maintenance base", status: maintErrors === 0 ? "pass" : "fail", count: maintErrors },
-          { label: "Weekly rotation closes", status: continuityCt === 0 ? "pass" : "warn", count: continuityCt },
-          { label: "Block times within 5% of table", status: blockDevFlights.length === 0 ? "pass" : "warn", count: blockDevFlights.length },
-          { label: "Cargo flights have adequate payload", status: payloadConstrained.length === 0 ? "pass" : "warn", count: payloadConstrained.length },
-          { label: "No flights exceeding 17 hours", status: ultraLong === 0 ? "pass" : "warn", count: ultraLong },
-        ];
-        const passed = items.filter(i => i.status === "pass").length;
-        const failed = items.filter(i => i.status === "fail").length;
-        const warned = items.filter(i => i.status === "warn").length;
-        const statusIcon = { pass: "✓", fail: "✗", warn: "⚠" };
-        const statusColor = { pass: C.success, fail: C.danger, warn: C.yellowHeavy };
-        const statusBg = { pass: C.successLight || "#ECFDF5", fail: C.dangerLight, warn: C.warnLight };
-
-        return (
-          <div style={{
-            marginBottom: 20, padding: "16px 20px", borderRadius: 10,
-            border: `2px solid ${failed > 0 ? C.danger : warned > 0 ? C.yellowHeavy : C.success}`,
-            background: C.white,
-          }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: C.brownDark, marginBottom: 12 }}>Schedule Readiness Checklist</div>
-            {items.map((item, idx) => (
-              <div key={idx} style={{
-                display: "flex", alignItems: "center", gap: 10, padding: "5px 0",
-                borderBottom: idx < items.length - 1 ? `1px solid ${C.offWhite2}` : "none",
-              }}>
-                <span style={{
-                  width: 22, height: 22, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
-                  background: statusBg[item.status], color: statusColor[item.status],
-                  fontSize: 12, fontWeight: 700, flexShrink: 0,
-                }}>{statusIcon[item.status]}</span>
-                <span style={{ flex: 1, fontSize: 11, color: C.text }}>{item.label}</span>
-                <span style={{
-                  fontSize: 10, fontWeight: 700, color: statusColor[item.status],
-                  padding: "2px 8px", borderRadius: 4, background: statusBg[item.status],
-                }}>
-                  {item.status === "pass" ? "PASS" : item.status === "fail" ? `FAIL (${item.count})` : `WARN (${item.count})`}
-                </span>
-              </div>
-            ))}
-            <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: 10, color: C.textMuted }}>
-                {passed} of {items.length} passed{failed > 0 ? ` · ${failed} failed` : ""}{warned > 0 ? ` · ${warned} warning${warned > 1 ? "s" : ""}` : ""}
-              </span>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: C.brownDark }}>Operational Feasibility</div>
-        <Badge color={C.danger} bg={C.dangerLight}>{counts.error} error{counts.error !== 1 ? "s" : ""}</Badge>
-        <Badge color={C.yellowHeavy} bg={C.warnLight}>{counts.warning} warning{counts.warning !== 1 ? "s" : ""}</Badge>
-        <Badge color={C.textSoft} bg={C.offWhite2}>{counts.info} info</Badge>
-
-        {issues.length === 0 && (
-          <div style={{ fontSize: 12, color: C.success, fontWeight: 600 }}>✓ All checks passed</div>
-        )}
-
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-          <select style={{ fontFamily: FONT, fontSize: 11, padding: "4px 8px", borderRadius: 5, border: `1px solid ${C.brownLight}`, background: C.white, color: C.text }}
-            value={filterAc} onChange={e => setFilterAc(e.target.value)}>
-            <option value="all">All aircraft</option>
-            {aircraft.filter(a => a.id !== POOL_AC_ID).map(ac => (
-              <option key={ac.id} value={ac.reg}>{ac.reg}</option>
-            ))}
-          </select>
-          <select style={{ fontFamily: FONT, fontSize: 11, padding: "4px 8px", borderRadius: 5, border: `1px solid ${C.brownLight}`, background: C.white, color: C.text }}
-            value={filterCat} onChange={e => setFilterCat(e.target.value)}>
-            <option value="all">All categories ({issues.length})</option>
-            {categories.map(c => (
-              <option key={c} value={c}>{c} ({issues.filter(i => i.category === c).length})</option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {/* Per-aircraft health summary bar */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-        {aircraft.filter(a => a.id !== POOL_AC_ID).map(ac => {
-          const acIssues = issues.filter(i => i.reg === ac.reg);
-          const errs = acIssues.filter(i => i.severity === "error").length;
-          const warns = acIssues.filter(i => i.severity === "warning").length;
-          const dot = errs > 0 ? C.danger : warns > 0 ? C.yellowHeavy : C.success;
-          return (
-            <button key={ac.id} onClick={() => { setFilterAc(filterAc === ac.reg ? "all" : ac.reg); }}
-              style={{
-                padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontFamily: FONT,
-                border: `2px solid ${filterAc === ac.reg ? dot : C.brownLight}`,
-                background: filterAc === ac.reg ? (errs > 0 ? C.dangerLight : warns > 0 ? C.warnLight : C.successLight) : C.white,
-                display: "flex", alignItems: "center", gap: 6, fontSize: 11,
-              }}>
-              <span style={{ width: 8, height: 8, borderRadius: "50%", background: dot, display: "inline-block" }} />
-              <span style={{ fontWeight: 700, color: C.brownDark }}>{ac.reg}</span>
-              {(errs > 0 || warns > 0) && (
-                <span style={{ fontSize: 9, color: C.textMuted }}>
-                  {errs > 0 && <span style={{ color: C.danger }}>{errs}E</span>}
-                  {errs > 0 && warns > 0 && " "}
-                  {warns > 0 && <span style={{ color: C.yellowHeavy }}>{warns}W</span>}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Issues grouped by aircraft */}
-      {(() => {
-        // Group filtered issues by aircraft
-        const byAc = {};
-        filtered.forEach(i => { const k = i.reg || "Schedule"; (byAc[k] = byAc[k] || []).push(i); });
-        const acRegs = aircraft.filter(a => a.id !== POOL_AC_ID).map(a => a.reg);
-        const orderedKeys = acRegs.filter(r => byAc[r]?.length > 0);
-        if (byAc["Schedule"]) orderedKeys.push("Schedule");
-        if (byAc["?"]) orderedKeys.push("?");
-
+        const ackSet = ui?.acknowledgedIssues || new Set();
+        const setAck = ui?.setAcknowledgedIssues;
+        const toggleAck = (issue) => {
+          if (!setAck) return;
+          const key = `${issue.flightId}|${issue.category}`;
+          const next = new Set(ackSet);
+          if (next.has(key)) next.delete(key); else next.add(key);
+          setAck(next);
+        };
         const navigateToFlight = (issue) => {
           if (ui?.ganttSearchRef) ui.ganttSearchRef.current = issue.flightNum || issue.route || "";
           dispatch({ type: A.SET_TAB, tab: "gantt" });
         };
 
-        if (orderedKeys.length === 0) return null;
+        const checkItems = [
+          { label: "Zero curfew violations (or all waived)", failLevel: "fail",
+            desc: "Checks that all flights depart and arrive within the airport's operating window. Hard curfew violations are errors; quota and noise-managed airports show as warnings.",
+            filter: i => i.category === "Curfew" && i.severity === "error" },
+          { label: "Zero schedule conflicts", failLevel: "fail",
+            desc: "Checks for overlapping flight blocks on the same aircraft and day. Two flights cannot occupy the same time slot on one tail.",
+            filter: i => i.category === "Conflict" },
+          { label: "Zero connectivity breaks", failLevel: "fail",
+            desc: "Checks that each flight's destination matches the next flight's origin for each aircraft. Ensures the aircraft can physically fly the planned route sequence.",
+            filter: i => i.category === "Connectivity" },
+          { label: "All turnarounds meet minimums", failLevel: "fail",
+            desc: "Checks that the gap between consecutive flights allows enough ground time for cargo handling (3h full turn, 2h partial, 1.5h tech stop).",
+            filter: i => i.category === "Turnaround" && i.severity === "error" },
+          { label: "All aircraft visit a maintenance base", failLevel: "fail",
+            desc: "Checks that each tail touches at least one maintenance base during the week with sufficient ground time for line checks.",
+            filter: i => i.category === "Maintenance" && i.severity === "error" },
+          { label: "Weekly rotation closes", failLevel: "warn",
+            desc: "Checks that each aircraft ends the week at the same station it starts, so the schedule can repeat week-on-week.",
+            filter: i => i.category === "Continuity" },
+          { label: "Block times within 5% of table", failLevel: "warn",
+            desc: "Checks that flight block times don't deviate more than 5% from the route table values.",
+            filter: i => i.category === "Block Mismatch" },
+          { label: "Cargo flights have adequate payload", failLevel: "warn",
+            desc: "Checks that routes with cargo operations have max payload at the structural maximum. Flags routes where fuel burn constrains payload below 105,000 kg.",
+            filter: i => i.category === "Payload" },
+          { label: "No flights exceeding 17 hours", failLevel: "warn",
+            desc: "Flags any flight with a block time over 17 hours (1,020 minutes).",
+            filter: i => i.category === "Ultra-Long" },
+        ];
 
-        return orderedKeys.map(reg => {
-          const acIssues = byAc[reg];
-          const errs = acIssues.filter(i => i.severity === "error").length;
-          const warns = acIssues.filter(i => i.severity === "warning").length;
-          const infos = acIssues.filter(i => i.severity === "info").length;
-          const isExpanded = expandedAc === null || expandedAc === reg;
+        const otherIssues = issues.filter(i => !checkItems.some(ci => ci.filter(i)));
+        const statusIcon = { pass: "\u2713", fail: "\u2717", warn: "\u26A0", ack: "\u2713" };
+        const statusColor = { pass: C.success, fail: C.danger, warn: C.yellowHeavy, ack: "#2563EB" };
+        const statusBg = { pass: C.successLight || "#ECFDF5", fail: C.dangerLight, warn: C.warnLight, ack: "#EFF6FF" };
 
-          return (
-            <div key={reg} style={{ marginBottom: 12 }}>
-              <button onClick={() => setExpandedAc(expandedAc === reg ? null : (isExpanded ? "__none__" : reg))}
-                style={{
-                  display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
-                  padding: "8px 14px", borderRadius: 8, cursor: "pointer", fontFamily: FONT, fontSize: 12,
-                  border: `1px solid ${C.brownLight}`, background: errs > 0 ? C.dangerLight : warns > 0 ? C.warnLight : C.offWhite2,
-                  fontWeight: 700, color: C.brownDark,
-                }}>
-                <span style={{ fontSize: 10 }}>{isExpanded ? "▼" : "▶"}</span>
-                <span>{reg}</span>
-                {errs > 0 && <Badge color={C.danger} bg="rgba(220,38,38,0.15)">{errs}E</Badge>}
-                {warns > 0 && <Badge color={C.yellowHeavy} bg="rgba(245,158,11,0.15)">{warns}W</Badge>}
-                {infos > 0 && <Badge color={C.textSoft} bg={C.offWhite2}>{infos}I</Badge>}
-              </button>
-              {isExpanded && (
-                <div style={{ overflowX: "auto", borderRadius: "0 0 10px 10px", border: `1px solid ${C.brownLight}`, borderTop: "none", background: C.white }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: FONT }}>
-                    <thead>
-                      <tr style={{ background: C.offWhite2 }}>
-                        <th style={thS}>Severity</th>
-                        <th style={thS}>Category</th>
-                        <th style={thS}>Flight</th>
-                        <th style={thS}>Route</th>
-                        <th style={thS}>Day</th>
-                        <th style={{ ...thS, width: "45%" }}>Detail</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {acIssues.map((issue, idx) => {
-                        const sv = sevStyle(issue.severity);
-                        return (
-                          <tr key={idx} onClick={() => navigateToFlight(issue)}
-                            style={{ background: idx % 2 === 0 ? C.white : C.bg, cursor: "pointer" }}
-                            title="Click to view in Gantt">
-                            <td style={tdS}><Badge color={sv.color} bg={sv.bg}>{sv.label}</Badge></td>
-                            <td style={{ ...tdS, fontWeight: 600 }}>{issue.category}</td>
-                            <td style={{ ...tdS, fontFamily: FONT, fontSize: 11 }}>{issue.flightNum || "—"}</td>
-                            <td style={{ ...tdS, fontFamily: FONT, fontSize: 11 }}>{issue.route}</td>
-                            <td style={{ ...tdS, textAlign: "center" }}>{DAY_NAMES[(issue.day || 1) - 1]}</td>
-                            <td style={{ ...tdS, fontSize: 10, color: C.textSoft }}>{issue.detail}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+        return (
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: C.brownDark, marginBottom: 12 }}>Schedule Readiness Checklist</div>
+            {checkItems.map((ci, idx) => {
+              const itemIssues = issues.filter(ci.filter);
+              const ackCount = itemIssues.filter(i => ackSet.has(`${i.flightId}|${i.category}`)).length;
+              const unresolvedCount = itemIssues.length - ackCount;
+              const allAcked = itemIssues.length > 0 && unresolvedCount === 0;
+              const status = itemIssues.length === 0 ? "pass" : allAcked ? "ack" : ci.failLevel;
+              const isExpanded = expandedAc === `check_${idx}`;
+              const sc = statusColor[status], sb = statusBg[status];
+
+              return (
+                <div key={idx} style={{ marginBottom: 4 }}>
+                  <button onClick={() => setExpandedAc(isExpanded ? null : `check_${idx}`)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
+                      padding: "10px 16px", borderRadius: 8, cursor: "pointer", fontFamily: FONT, fontSize: 12,
+                      border: `2px solid ${sc}20`, background: sb,
+                      fontWeight: 600, color: C.text,
+                    }}>
+                    <span style={{
+                      width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                      background: sc, color: "#fff", fontSize: 13, fontWeight: 700, flexShrink: 0,
+                    }}>{statusIcon[status]}</span>
+                    <span style={{ flex: 1 }}>{ci.label}</span>
+                    {itemIssues.length > 0 && (
+                      <span style={{ fontSize: 10, color: sc, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: `${sc}15` }}>
+                        {allAcked ? `All ${itemIssues.length} acknowledged` : `${unresolvedCount} unresolved / ${itemIssues.length} total`}
+                      </span>
+                    )}
+                    <span style={{ fontSize: 10, color: C.textMuted }}>{isExpanded ? "\u25BC" : "\u25B6"}</span>
+                  </button>
+                  {isExpanded && (
+                    <div style={{ padding: "8px 16px 16px 50px", borderLeft: `3px solid ${sc}40`, marginLeft: 12, background: C.white }}>
+                      <div style={{ fontSize: 10, color: C.textSoft, lineHeight: 1.6, marginBottom: 12 }}>{ci.desc}</div>
+                      {itemIssues.length === 0 ? (
+                        <div style={{ fontSize: 11, color: C.success, fontWeight: 600 }}>No issues found.</div>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          {itemIssues.map((issue, ii) => {
+                            const ackKey = `${issue.flightId}|${issue.category}`;
+                            const isAcked = ackSet.has(ackKey);
+                            return (
+                              <div key={ii} style={{
+                                display: "flex", alignItems: "center", gap: 8, padding: "6px 10px",
+                                borderRadius: 6, background: isAcked ? "#F0FDF4" : C.offWhite2,
+                                border: `1px solid ${isAcked ? C.success + "40" : C.brownLight}`,
+                                opacity: isAcked ? 0.7 : 1,
+                              }}>
+                                <input type="checkbox" checked={isAcked} onChange={() => toggleAck(issue)}
+                                  style={{ width: 14, height: 14, cursor: "pointer", accentColor: C.success, flexShrink: 0 }}
+                                  title={isAcked ? "Unacknowledge this issue" : "Acknowledge this issue"} />
+                                <span style={{ flex: 1, fontSize: 10, color: C.text, cursor: "pointer", textDecoration: isAcked ? "line-through" : "none" }}
+                                  onClick={() => navigateToFlight(issue)} title="Click to view in Gantt">
+                                  <strong>{issue.reg}</strong> {issue.flightNum || "\u2014"} {issue.route} Day {DAY_NAMES[(issue.day || 1) - 1]} \u2014 {issue.detail}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              )}
+              );
+            })}
+
+            {otherIssues.length > 0 && (() => {
+              const isExpanded = expandedAc === "check_other";
+              const otherAckCount = otherIssues.filter(i => ackSet.has(`${i.flightId}|${i.category}`)).length;
+              const otherUnresolved = otherIssues.length - otherAckCount;
+              return (
+                <div style={{ marginTop: 8 }}>
+                  <button onClick={() => setExpandedAc(isExpanded ? null : "check_other")}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
+                      padding: "10px 16px", borderRadius: 8, cursor: "pointer", fontFamily: FONT, fontSize: 12,
+                      border: `1px solid ${C.brownLight}`, background: C.offWhite2,
+                      fontWeight: 600, color: C.text,
+                    }}>
+                    <span style={{
+                      width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                      background: C.textMuted, color: "#fff", fontSize: 13, fontWeight: 700, flexShrink: 0,
+                    }}>i</span>
+                    <span style={{ flex: 1 }}>Other findings</span>
+                    <span style={{ fontSize: 10, color: C.textMuted }}>{otherUnresolved} of {otherIssues.length} unresolved</span>
+                    <span style={{ fontSize: 10, color: C.textMuted }}>{isExpanded ? "\u25BC" : "\u25B6"}</span>
+                  </button>
+                  {isExpanded && (
+                    <div style={{ padding: "8px 16px 16px 50px", borderLeft: `3px solid ${C.brownLight}`, marginLeft: 12, background: C.white }}>
+                      <div style={{ fontSize: 10, color: C.textSoft, lineHeight: 1.6, marginBottom: 12 }}>
+                        Additional warnings and informational findings including curfew buffer warnings, unverified airports, unknown airports, missing flight data, and unvalidated block times.
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        {otherIssues.map((issue, ii) => {
+                          const ackKey = `${issue.flightId}|${issue.category}`;
+                          const isAcked = ackSet.has(ackKey);
+                          const sv = sevStyle(issue.severity);
+                          return (
+                            <div key={ii} style={{
+                              display: "flex", alignItems: "center", gap: 8, padding: "6px 10px",
+                              borderRadius: 6, background: isAcked ? "#F0FDF4" : C.offWhite2,
+                              border: `1px solid ${isAcked ? C.success + "40" : C.brownLight}`,
+                              opacity: isAcked ? 0.7 : 1,
+                            }}>
+                              <input type="checkbox" checked={isAcked} onChange={() => toggleAck(issue)}
+                                style={{ width: 14, height: 14, cursor: "pointer", accentColor: C.success, flexShrink: 0 }} />
+                              <Badge color={sv.color} bg={sv.bg}>{issue.category}</Badge>
+                              <span style={{ flex: 1, fontSize: 10, color: C.text, cursor: "pointer", textDecoration: isAcked ? "line-through" : "none" }}
+                                onClick={() => navigateToFlight(issue)} title="Click to view in Gantt">
+                                <strong>{issue.reg}</strong> {issue.flightNum || "\u2014"} {issue.route} Day {DAY_NAMES[(issue.day || 1) - 1]} \u2014 {issue.detail}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            <div style={{ marginTop: 12, padding: "8px 16px", fontSize: 10, color: C.textMuted }}>
+              {(() => {
+                const passed = checkItems.filter(ci => issues.filter(ci.filter).length === 0).length;
+                const acked = checkItems.filter(ci => { const ii = issues.filter(ci.filter); return ii.length > 0 && ii.every(i => ackSet.has(`${i.flightId}|${i.category}`)); }).length;
+                const failed = checkItems.length - passed - acked;
+                return `${passed} passed${acked > 0 ? ` \u00B7 ${acked} acknowledged` : ""}${failed > 0 ? ` \u00B7 ${failed} unresolved` : " \u00B7 all clear"}`;
+              })()}
             </div>
-          );
-        });
+          </div>
+        );
       })()}
 
       {/* ── Curfew Reference: restricted stations in this schedule ─── */}
@@ -14654,6 +14625,8 @@ function AppShell({ authEmail, onSignOut }) {
   const [weekYear, setWeekYear] = useState(2026);
   // Gantt day header: true = "Mon 06 Apr", false = generic "Mon"
   const [showHeaderDates, setShowHeaderDates] = useState(true);
+  // Acknowledged feasibility issues — persisted with scenario save/load
+  const [acknowledgedIssues, setAcknowledgedIssues] = useState(new Set());
   const [acModal, setAcModal]         = useState(false);
   const [newAcReg, setNewAcReg]       = useState("");
   const [newAcPayload, setNewAcPayload] = useState(105000);
@@ -14730,6 +14703,7 @@ function AppShell({ authEmail, onSignOut }) {
         dispatch({ type: A.LOAD_FULL_SCENARIO, data });
         if (data.weekNum)  setWeekNum(data.weekNum);
         if (data.weekYear) setWeekYear(data.weekYear);
+        setAcknowledgedIssues(new Set(data.acknowledgedIssues || []));
       }
     })();
   }, [cloud.defaultId, cloud.loading]);
@@ -14992,6 +14966,7 @@ function AppShell({ authEmail, onSignOut }) {
       scheduleDate,
       weekNum,
       weekYear,
+      acknowledgedIssues: [...acknowledgedIssues],
       aircraft,
       flights,
       blockTable,
@@ -15388,7 +15363,8 @@ function AppShell({ authEmail, onSignOut }) {
     exportAirports,
     weekNum, weekYear, setWeekNum, setWeekYear,
     showHeaderDates, setShowHeaderDates,
-  }), [aircraft, blockTable, airports, scenarioName, weekNum, weekYear, showHeaderDates]);
+    acknowledgedIssues, setAcknowledgedIssues,
+  }), [aircraft, blockTable, airports, scenarioName, weekNum, weekYear, showHeaderDates, acknowledgedIssues]);
 
   return (
     <UIContext.Provider value={uiCtx}>
@@ -15689,7 +15665,7 @@ function AppShell({ authEmail, onSignOut }) {
             )}
             <button
               onClick={async () => {
-                await cloud.saveScenario(cloud.activeId, stateRef.current, { weekNum, weekYear });
+                await cloud.saveScenario(cloud.activeId, stateRef.current, { weekNum, weekYear, acknowledgedIssues: [...acknowledgedIssues] });
                 await cloud.refresh();
                 setSavedVersion(versionCounter.current);
                 setScenarioMsg({ ok: true, msg: "Scenario saved." });
@@ -16157,7 +16133,7 @@ function AppShell({ authEmail, onSignOut }) {
                 <PrimaryBtn onClick={async () => {
                   const id = await cloud.createScenario(stateRef.current, newScName || scenarioName || "New Scenario", {
                     notes: newScNotes, month: newScMonth, author: newScAuthor,
-                    weekNum, weekYear,
+                    weekNum, weekYear, acknowledgedIssues: [...acknowledgedIssues],
                   });
                   if (id) {
                     setScenarioMsg({ ok: true, msg: "Scenario saved to cloud." });
@@ -16478,7 +16454,7 @@ function AppShell({ authEmail, onSignOut }) {
                   {sc.editing ? (
                     <>
                       <PrimaryBtn onClick={async () => {
-                        await cloud.saveScenario(sc.id, stateRef.current, { notes: sc.notes, month: sc.month, author: sc.author, weekNum: sc.weekNum ?? weekNum, weekYear: sc.weekYear ?? weekYear });
+                        await cloud.saveScenario(sc.id, stateRef.current, { notes: sc.notes, month: sc.month, author: sc.author, weekNum: sc.weekNum ?? weekNum, weekYear: sc.weekYear ?? weekYear, acknowledgedIssues: [...acknowledgedIssues] });
                         await cloud.refresh();
                         setScDetail({ ...sc, editing: false });
                         setScenarioMsg({ ok: true, msg: "Scenario details updated." });
