@@ -15935,13 +15935,10 @@ function AppShell({ authEmail, onSignOut }) {
                     <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: FONT }}>
                       <thead>
                         <tr>
+                          <SortTh label="Week" sk="week" width={75} />
+                          <SortTh label="Month" sk="month" width={75} />
                           <SortTh label="Name" sk="name" />
-                          <SortTh label="Season" sk="season" width={60} />
-                          <SortTh label="Week" sk="week" width={70} />
-                          <SortTh label="Month" sk="month" width={80} />
                           <SortTh label="Author" sk="author" width={60} />
-                          <SortTh label="AC" sk="aircraft" width={40} />
-                          <SortTh label="Flights" sk="flights" width={55} />
                           <SortTh label="Modified" sk="updated" />
                           <th style={{ ...thStyle, width: 140 }}>Actions</th>
                         </tr>
@@ -15954,6 +15951,16 @@ function AppShell({ authEmail, onSignOut }) {
                             <tr key={sc.id} style={{
                               background: isActive ? C.successLight : idx % 2 === 0 ? C.white : C.offWhite,
                             }}>
+                              <td style={{ ...tdStyle, fontFamily: FONT, fontWeight: 600, fontSize: 11 }}>
+                                {sc.weekNum ? `Week ${String(sc.weekNum).padStart(2, "0")}` : "—"}
+                              </td>
+                              <td style={{ ...tdStyle, fontFamily: FONT, fontWeight: 600, fontSize: 10 }}>
+                                {sc.month ? (() => {
+                                  const [y, m] = sc.month.split("-");
+                                  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+                                  return months[parseInt(m, 10) - 1] + "-" + (y || "").slice(2);
+                                })() : "—"}
+                              </td>
                               <td style={{ ...tdStyle, fontWeight: 700, color: C.brownDark }}>
                                 {isRenaming ? (
                                   <div style={{ display: "flex", gap: 4 }}>
@@ -15983,20 +15990,7 @@ function AppShell({ authEmail, onSignOut }) {
                                   </div>
                                 )}
                               </td>
-                              <td style={{ ...tdStyle, textAlign: "center" }}>
-                                <span style={{
-                                  padding: "2px 6px", borderRadius: 3, fontWeight: 700, fontSize: 9,
-                                  background: sc.season === "W" ? AOC_DEFS.ATLAS.bg : C.yellowLight,
-                                  color: sc.season === "W" ? "#1B365D" : "#92700E",
-                                }}>{sc.season === "W" ? "WIN" : "SUM"}</span>
-                              </td>
-                              <td style={{ ...tdStyle, textAlign: "center", fontFamily: FONT, fontWeight: 600, fontSize: 10, color: C.textSoft }}>
-                                {sc.weekNum && sc.weekYear ? `W${String(sc.weekNum).padStart(2, "0")}/${sc.weekYear}` : "—"}
-                              </td>
-                              <td style={{ ...tdStyle, fontFamily: FONT, fontWeight: 600, fontSize: 10 }}>{sc.month || "—"}</td>
                               <td style={{ ...tdStyle, fontFamily: FONT, fontWeight: 700, fontSize: 10, letterSpacing: 0.5 }}>{sc.author || "—"}</td>
-                              <td style={{ ...tdStyle, textAlign: "center", fontFamily: FONT }}>{sc.aircraftCount}</td>
-                              <td style={{ ...tdStyle, textAlign: "center", fontFamily: FONT }}>{sc.flightCount}</td>
                               <td style={{ ...tdStyle, fontSize: 10, color: C.textSoft }}>{fmtDate(sc.updatedAt)}</td>
                               <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>
                                 <div style={{ display: "flex", gap: 4 }}>
