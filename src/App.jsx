@@ -5403,7 +5403,8 @@ function useCloudScenarios() {
       airports: (state.airports || []).filter(a => isUserAirport(a) || a.modified).map(a => ({
         id: a.id, code: a.code, name: a.name, utcOffset: a.utcOffset, utcOffsetS: a.utcOffsetS,
         lat: a.lat, lon: a.lon, depOpen: a.depOpen, depClose: a.depClose,
-        arrOpen: a.arrOpen, arrClose: a.arrClose, notes: a.notes || "", modified: !!a.modified,
+        arrOpen: a.arrOpen, arrClose: a.arrClose, cargoExempt: a.cargoExempt || false,
+        restrictionType: a.restrictionType || "none", notes: a.notes || "", modified: !!a.modified,
       })),
     };
     // Preserve/update metadata
@@ -5461,7 +5462,8 @@ function useCloudScenarios() {
       airports: (state.airports || []).filter(a => isUserAirport(a) || a.modified).map(a => ({
         id: a.id, code: a.code, name: a.name, utcOffset: a.utcOffset, utcOffsetS: a.utcOffsetS,
         lat: a.lat, lon: a.lon, depOpen: a.depOpen, depClose: a.depClose,
-        arrOpen: a.arrOpen, arrClose: a.arrClose, notes: a.notes || "", modified: !!a.modified,
+        arrOpen: a.arrOpen, arrClose: a.arrClose, cargoExempt: a.cargoExempt || false,
+        restrictionType: a.restrictionType || "none", notes: a.notes || "", modified: !!a.modified,
       })),
     };
     try {
@@ -12944,8 +12946,9 @@ function FeasibilityTab() {
       const checkUnverified = (apCode, apData, opLabel) => {
         if (!apData) return;
         const hasCurfewData = apData.depOpen != null || apData.depClose != null || apData.arrOpen != null || apData.arrClose != null;
-        const hasRestrictionType = apData.restrictionType && apData.restrictionType !== "none";
-        if (!hasCurfewData && !hasRestrictionType) {
+        // restrictionType being set to ANY value (including "none") means the airport was reviewed
+        const hasBeenReviewed = apData.restrictionType != null && apData.restrictionType !== "";
+        if (!hasCurfewData && !hasBeenReviewed) {
           // Only warn once per airport per flight (check if we already added this)
           const alreadyWarned = list.some(i => i.flightId === f.id && i.category === "Unverified Airport" && i.detail.includes(apCode));
           if (!alreadyWarned) {
