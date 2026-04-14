@@ -15342,6 +15342,7 @@ function AppShell({ authEmail, onSignOut }) {
             <button
               onClick={async () => {
                 await cloud.saveScenario(cloud.activeId, stateRef.current, { weekNum, weekYear });
+                await cloud.refresh();
                 setSavedVersion(versionCounter.current);
                 setScenarioMsg({ ok: true, msg: "Scenario saved." });
                 setTimeout(() => setScenarioMsg(null), 2000);
