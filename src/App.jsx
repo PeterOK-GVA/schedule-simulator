@@ -508,6 +508,9 @@ const MAINT_BASES = {
 const MAINT_MIN_WEEKLY_HOURS   = 15;  // minimum ground hours at maint bases per tail per week
 const MAINT_MIN_SLOT_HOURS     = 4;   // minimum single continuous slot for a line check
 const MAINT_MAX_DAYS_NO_BASE   = 5;   // warn if aircraft doesn't touch a maint base for this many days
+const CURFEW_BUFFER_MINS       = 30;  // warn when within 30 min of curfew boundary
+const MAX_BLOCK_MINS           = 1020; // 17 hours — flag flights exceeding this
+const BLOCK_TOLERANCE_PCT      = 0.05; // 5% tolerance for block time vs table check
 const TURN_COLOR_VIOLATION = C.danger;
 const TURN_COLOR_OK        = C.brownLight;
 
@@ -5364,7 +5367,7 @@ function useCloudScenarios() {
       flights: (state.flights || []).map(f => ({
         id: f.id, acId: f.acId, route: f.route, dep: f.dep, block: f.block,
         type: f.type, flightNum: f.flightNum, day: f.day,
-        cargoOp: f.cargoOp, payload: f.payload, customer: f.customer || "", rotationId: f.rotationId || null,
+        cargoOp: f.cargoOp, payload: f.payload, customer: f.customer || "", rotationId: f.rotationId || null, curfewWaiver: f.curfewWaiver || false,
       })),
       aircraft: (state.aircraft || []).map(a => ({
         id: a.id, reg: a.reg, maxPayload: a.maxPayload,
@@ -5422,7 +5425,7 @@ function useCloudScenarios() {
       flights: (state.flights || []).map(f => ({
         id: f.id, acId: f.acId, route: f.route, dep: f.dep, block: f.block,
         type: f.type, flightNum: f.flightNum, day: f.day,
-        cargoOp: f.cargoOp, payload: f.payload, customer: f.customer || "", rotationId: f.rotationId || null,
+        cargoOp: f.cargoOp, payload: f.payload, customer: f.customer || "", rotationId: f.rotationId || null, curfewWaiver: f.curfewWaiver || false,
       })),
       aircraft: (state.aircraft || []).map(a => ({
         id: a.id, reg: a.reg, maxPayload: a.maxPayload,
@@ -5494,7 +5497,7 @@ function useCloudScenarios() {
       flights: (state.flights || []).map(f => ({
         id: f.id, acId: f.acId, route: f.route, dep: f.dep, block: f.block,
         type: f.type, flightNum: f.flightNum, day: f.day,
-        cargoOp: f.cargoOp, payload: f.payload, customer: f.customer || "", rotationId: f.rotationId || null,
+        cargoOp: f.cargoOp, payload: f.payload, customer: f.customer || "", rotationId: f.rotationId || null, curfewWaiver: f.curfewWaiver || false,
       })),
       aircraft: (state.aircraft || []).map(a => ({
         id: a.id, reg: a.reg, maxPayload: a.maxPayload,
@@ -5673,19 +5676,50 @@ function useScheduleValidation() {
    * Returns string[] — one entry per violated window.
    * Checks departure (origin) against depOpen/depClose and arrival (destination) against arrOpen/arrClose.
    */
+  /**
+   * Curfew violations and buffer warnings for a single flight.
+   * Returns { errors: string[], warnings: string[] }
+   *
+   * Enhancements:
+   * - Cargo-exempt airports: cargo flights (F, H) skip curfew checks
+   * - Near-curfew buffer: WARN when within CURFEW_BUFFER_MINS of boundary
+   * - Per-flight waiver: flight.curfewWaiver bypasses all checks (INFO returned by caller)
+   */
   const curfewViolations = useCallback((flight) => {
+    const errors = [], warnings = [];
+
+    // Per-flight curfew waiver — skip all checks
+    if (flight.curfewWaiver) return { errors, warnings };
+
     const [orig, dest] = (flight.route || "").split("-");
-    const violations = [];
+    const isCargo = flight.type === "F" || flight.type === "H";
 
     const checkWindow = (ap, utcMins, open, close, label) => {
       if (open == null || close == null) return;
-      // ap.utcOffset is already season-adjusted by lookupAirport
+      // Cargo-exempt airports skip curfew for cargo flights
+      if (ap.cargoExempt && isCargo) return;
+
       const lt = localTime(utcMins, ap.utcOffset);
       const outside = open <= close
         ? (lt < open || lt > close)
         : (lt < open && lt > close);
       if (outside) {
-        violations.push(`${label} ${ap.code} ${toHHMM(lt)} local — ops ${toHHMM(open)}–${toHHMM(close)}`);
+        errors.push(`${label} ${ap.code} ${toHHMM(lt)} local — ops ${toHHMM(open)}–${toHHMM(close)}`);
+        return;
+      }
+      // Near-curfew buffer warning (inside window but close to boundary)
+      if (CURFEW_BUFFER_MINS > 0) {
+        const distToOpen = open <= close
+          ? (lt - open + DAY_MINS) % DAY_MINS
+          : (lt >= open ? lt - open : lt + DAY_MINS - open);
+        const distToClose = open <= close
+          ? (close - lt + DAY_MINS) % DAY_MINS
+          : (lt <= close ? close - lt : close + DAY_MINS - lt);
+        if (distToOpen < CURFEW_BUFFER_MINS) {
+          warnings.push(`${label} ${ap.code} ${toHHMM(lt)} local — within ${distToOpen}m of curfew open ${toHHMM(open)} (ops ${toHHMM(open)}–${toHHMM(close)})`);
+        } else if (distToClose < CURFEW_BUFFER_MINS) {
+          warnings.push(`${label} ${ap.code} ${toHHMM(lt)} local — within ${distToClose}m of curfew close ${toHHMM(close)} (ops ${toHHMM(open)}–${toHHMM(close)})`);
+        }
       }
     };
 
@@ -5693,7 +5727,7 @@ function useScheduleValidation() {
     const destAp = lookupAirport(dest);
     if (origAp) checkWindow(origAp, flight.dep, origAp.depOpen, origAp.depClose, "DEP");
     if (destAp) checkWindow(destAp, flight.dep + flight.block, destAp.arrOpen, destAp.arrClose, "ARR");
-    return violations;
+    return { errors, warnings };
   }, [lookupAirport, activeSeason]);
 
   /**
@@ -5924,7 +5958,8 @@ function useScheduleValidation() {
     // Curfew warning
     if (flight.route && flight.dep != null && flight.block) {
       const cv = curfewViolations(flight);
-      cv.forEach(v => warnings.push(`Curfew: ${v}`));
+      cv.errors.forEach(v => warnings.push(`Curfew: ${v}`));
+      cv.warnings.forEach(v => warnings.push(`Curfew buffer: ${v}`));
     }
 
     // Payload vs max structural
@@ -5954,7 +5989,9 @@ function useScheduleValidation() {
     if (hasConflict(flight))          w.push("Schedule conflict with another flight");
     if (hasConnectivityIssue(flight)) w.push("Station mismatch with adjacent flight");
     if (hasBlockMismatch(flight))     w.push(`Block time differs from table`);
-    curfewViolations(flight).forEach(v => w.push(`Curfew: ${v}`));
+    const cv = curfewViolations(flight);
+    cv.errors.forEach(v => w.push(`Curfew: ${v}`));
+    cv.warnings.forEach(v => w.push(`Curfew buffer: ${v}`));
     return w;
   }, [hasConflict, hasConnectivityIssue, hasBlockMismatch, curfewViolations]);
 
@@ -8156,14 +8193,15 @@ function GanttTab() {
                     const conflict = hasConflict(flight);
                     const connect  = hasConnectivityIssue(flight);
                     const cviol    = curfewViolations(flight);
-                    const hasCurfew = cviol.length > 0;
+                    const hasCurfew = cviol.errors.length > 0;
+                    const hasCurfewWarn = cviol.warnings.length > 0;
                     const mismatch = hasBlockMismatch(flight);
 
                     const isFerry = flight.type === "P";
                     const isMaint = flight.type === "M";
                     const style = flightStyle(flight.type);
                     const hasError = (conflict || connect) && !isMaint;
-                    const hasIssue = (hasError || hasCurfew || mismatch) && !isMaint;
+                    const hasIssue = (hasError || hasCurfew || hasCurfewWarn || mismatch) && !isMaint;
                     const searchMatch = ganttSearchMatches && ganttSearchMatches.has(flight.id);
                     const searchDim = ganttSearchMatches && !searchMatch;
 
@@ -8670,8 +8708,12 @@ function GanttTab() {
                 </div>
               );
             })()}
-            {cviol.map((v, i) => (
-              <div key={i} style={{ color: C.yellowHeavy }}>⚠︎ {v}</div>
+            {f.curfewWaiver && <div style={{ color: C.success, fontSize: 10 }}>☑ Curfew waiver approved</div>}
+            {cviol.errors.map((v, i) => (
+              <div key={`ce${i}`} style={{ color: C.danger }}>⚠︎ {v}</div>
+            ))}
+            {cviol.warnings.map((v, i) => (
+              <div key={`cw${i}`} style={{ color: C.yellowHeavy, fontSize: 10 }}>◆ {v}</div>
             ))}
             {hasConflict(f) && (
               <div style={{ color: C.danger }}>⚠︎ Schedule conflict</div>
@@ -8909,6 +8951,15 @@ function GanttTab() {
               </div>
             </div>
           )}
+
+          {/* Curfew waiver */}
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, fontWeight: 600, color: C.textMuted, cursor: "pointer", marginBottom: 8, userSelect: "none" }}>
+            <input type="checkbox" checked={editModal.curfewWaiver || false}
+              onChange={e => setEditModal({ ...editModal, curfewWaiver: e.target.checked })}
+              style={{ width: 13, height: 13, margin: 0, cursor: "pointer", accentColor: C.success }} />
+            Curfew waiver approved
+            {editModal.curfewWaiver && <span style={{ fontSize: 8, color: C.success, fontWeight: 700 }}>ACTIVE</span>}
+          </label>
 
           <label style={{ fontSize: 10, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 2 }}>Customer</label>
           <CustomerTagInput
@@ -11780,6 +11831,7 @@ function AirportsTab() {
         lon: editing.lon !== "" ? parseFloat(editing.lon) || null : null,
         depOpen: toMins(editing.depOpenStr), depClose: toMins(editing.depCloseStr),
         arrOpen: toMins(editing.arrOpenStr), arrClose: toMins(editing.arrCloseStr),
+        cargoExempt: editing.cargoExempt || false,
         notes: editing.notes || "",
       },
     });
@@ -11915,6 +11967,7 @@ function AirportsTab() {
               <th style={{ ...thS, color: C.yellowHeavy }}>Dep Close</th>
               <th style={{ ...thS, color: C.yellowHeavy }}>Arr Open</th>
               <th style={{ ...thS, color: C.yellowHeavy }}>Arr Close</th>
+              <th style={{ ...thS, color: C.success }}>Cargo Exempt</th>
               <th style={thS}>Notes</th>
               <th style={thS} />
             </tr>
@@ -11964,6 +12017,11 @@ function AirportsTab() {
                       <input style={{ ...iStyle, width: 80 }} type="time" value={editing.arrCloseStr || ""}
                         onChange={e => setEditing({ ...editing, arrCloseStr: e.target.value })} />
                     </td>
+                    <td style={{ ...tdS, textAlign: "center" }}>
+                      <input type="checkbox" checked={editing.cargoExempt || false}
+                        onChange={e => setEditing({ ...editing, cargoExempt: e.target.checked })}
+                        style={{ width: 14, height: 14, cursor: "pointer", accentColor: C.success }} />
+                    </td>
                     <td style={tdS}>
                       <input style={{ ...iStyle, width: 140 }} placeholder="Cargo-specific rules…" value={editing.notes || ""}
                         onChange={e => setEditing({ ...editing, notes: e.target.value })} />
@@ -12000,6 +12058,9 @@ function AirportsTab() {
                       <td style={tdS}>{ap.arrOpen != null ? <Badge color={C.yellowHeavy} bg={C.warnLight}>{toHHMM(ap.arrOpen)}</Badge> : <span style={{ color: C.textMuted }}>—</span>}</td>
                       <td style={tdS}>{ap.arrClose != null ? <Badge color={C.yellowHeavy} bg={C.warnLight}>{toHHMM(ap.arrClose)}</Badge> : <span style={{ color: C.textMuted }}>—</span>}</td>
                     </>)}
+                    <td style={{ ...tdS, textAlign: "center" }}>
+                      {ap.cargoExempt ? <Badge color={C.success} bg={C.successLight || "#ECFDF5"}>✓</Badge> : <span style={{ color: C.textMuted }}>—</span>}
+                    </td>
                     <td style={{ ...tdS, fontSize: 10, color: C.textSoft, maxWidth: 160 }}>{ap.notes || ""}</td>
                     <td style={tdS}><GhostBtn onClick={() => startEdit(ap)}>Edit</GhostBtn></td>
                   </>
@@ -12377,15 +12438,6 @@ function SSIMTab() {
   return (
     <div style={{ padding: 24, maxWidth: 1200, margin: "0 auto", fontFamily: FONT }}>
 
-      <div style={{
-        marginBottom: 16, padding: "10px 16px", borderRadius: 8,
-        background: C.dangerLight, color: C.danger,
-        border: "1px solid #FECACA", fontSize: 12, fontWeight: 600,
-        display: "flex", alignItems: "center", gap: 8,
-      }}>
-        <span style={{ fontSize: 16 }}>⚠︎</span>
-        Work in progress — this tab is under development and should not be used for operational purposes.
-      </div>
 
       {/* Header with Import/Export toggle */}
       <div style={{ marginBottom: 20, display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
@@ -12733,7 +12785,8 @@ function SSIMTab() {
 // ── Feasibility Tab ──────────────────────────────────────────────────────────
 
 function FeasibilityTab() {
-  const { flights, aircraft, airports, lookupAirport, lookupBlock, lookupBlockEntry, flightAoc, activeSeason } = useSchedule();
+  const { flights, aircraft, airports, lookupAirport, lookupBlock, lookupBlockEntry, lookupPayload, flightAoc, activeSeason, dispatch, scenarioName, blockTable } = useSchedule();
+  const ui = useUI();
   const {
     curfewViolations, hasConflict, hasConnectivityIssue,
     hasBlockMismatch, getAllTurnarounds,
@@ -12749,8 +12802,16 @@ function FeasibilityTab() {
       const base = { flightId: f.id, flightNum: f.flightNum || "", route: f.route || "", day: f.day, reg };
 
       // Curfew
-      curfewViolations(f).forEach(v => {
+      const cv = curfewViolations(f);
+      if (f.curfewWaiver && cv.errors.length === 0) {
+        // Waiver active and no violations — check if it WOULD have violated without waiver
+        // (skip for now — waiver means no check was run)
+      }
+      cv.errors.forEach(v => {
         list.push({ ...base, category: "Curfew", severity: "error", detail: v });
+      });
+      cv.warnings.forEach(v => {
+        list.push({ ...base, category: "Curfew Buffer", severity: "warning", detail: v });
       });
 
       // Conflict
@@ -12774,6 +12835,38 @@ function FeasibilityTab() {
         list.push({ ...base, category: "Block Mismatch", severity: "warning", detail: `Flight block ${f.block}m vs route table (${parts.join(" / ")})` });
       }
 
+      // Payload vs structural max
+      if (f.payload > 0 && ac?.maxPayload > 0 && f.payload > ac.maxPayload) {
+        list.push({ ...base, category: "Payload", severity: "error",
+          detail: `Payload ${fmtKg(f.payload)} exceeds ${reg} structural max ${fmtKg(ac.maxPayload)} — overweight by ${fmtKg(f.payload - ac.maxPayload)}` });
+      }
+
+      // Payload vs route table max payload
+      const [dep, arr] = (f.route || "").split("-");
+      if (f.payload > 0) {
+        const entry = lookupBlockEntry(f.route, flightAoc(f.acId), f.flightNum);
+        const routePayload = entry ? extractPayload(entry, activeSeason) : null;
+        if (routePayload && f.payload > routePayload) {
+          list.push({ ...base, category: "Payload", severity: "warning",
+            detail: `Payload ${fmtKg(f.payload)} exceeds route table max ${fmtKg(routePayload)} for ${f.route} (${activeSeason === "W" ? "Winter" : "Summer"})` });
+        }
+        // Payload vs estimated max (only for routes not in table)
+        if (!entry && dep && arr) {
+          const est = estimateBlock(dep, arr, activeSeason, flightAoc(f.acId));
+          if (est && f.payload > est.payloadKg) {
+            list.push({ ...base, category: "Payload", severity: "warning",
+              detail: `Payload ${fmtKg(f.payload)} exceeds estimated max ${fmtKg(est.payloadKg)} for ${f.route}` });
+          }
+        }
+      }
+
+      // Ultra-long-haul check (>17 hours)
+      if (f.block > MAX_BLOCK_MINS) {
+        const h = Math.floor(f.block / 60), m = f.block % 60;
+        list.push({ ...base, category: "Ultra-Long", severity: "warning",
+          detail: `Block time ${h}h${m > 0 ? ` ${m}m` : ""} exceeds ${MAX_BLOCK_MINS / 60}h maximum` });
+      }
+
       // Unclassified type
       if (!FLIGHT_TYPES[f.type]) {
         list.push({ ...base, category: "Unclassified", severity: "info", detail: `Flight type "${f.type}" — not classified as F, H or P` });
@@ -12785,7 +12878,6 @@ function FeasibilityTab() {
       }
 
       // Unknown airports
-      const [dep, arr] = (f.route || "").split("-");
       if (dep && !lookupAirport(dep)) {
         list.push({ ...base, category: "Unknown Airport", severity: "warning", detail: `Departure airport ${dep} not in Airports tab — no UTC offset or curfew data` });
       }
@@ -12970,8 +13062,11 @@ function FeasibilityTab() {
   }, [flights, aircraft, airports, activeSeason, curfewViolations, hasConflict, hasConnectivityIssue, hasBlockMismatch, getAllTurnarounds, lookupAirport, lookupBlock]);
 
   const [filterCat, setFilterCat] = useState("all");
+  const [filterAc, setFilterAc] = useState("all");
   const categories = useMemo(() => [...new Set(issues.map(i => i.category))], [issues]);
-  const filtered = filterCat === "all" ? issues : issues.filter(i => i.category === filterCat);
+  const filtered = issues.filter(i => (filterCat === "all" || i.category === filterCat) && (filterAc === "all" || i.reg === filterAc));
+  const [capsExpanded, setCapsExpanded] = useState(true);
+  const [expandedAc, setExpandedAc] = useState(null); // null = all expanded
 
   const counts = useMemo(() => {
     const c = { error: 0, warning: 0, info: 0 };
@@ -12991,15 +13086,124 @@ function FeasibilityTab() {
   return (
     <div style={{ padding: 24, maxWidth: 1200, margin: "0 auto" }}>
 
-      <div style={{
-        marginBottom: 16, padding: "10px 16px", borderRadius: 8,
-        background: C.dangerLight, color: C.danger,
-        border: "1px solid #FECACA", fontSize: 12, fontWeight: 600,
-        display: "flex", alignItems: "center", gap: 8,
-      }}>
-        <span style={{ fontSize: 16 }}>⚠︎</span>
-        Work in progress — this tab is under development and should not be used for operational purposes.
-      </div>
+      {/* Capability summary (replaces old WIP banner) */}
+      {capsExpanded && (
+        <div style={{
+          marginBottom: 16, padding: "12px 18px", borderRadius: 8,
+          background: C.offWhite2, border: `1px solid ${C.brownLight}`, fontSize: 10, color: C.textSoft, lineHeight: 1.7,
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: C.brownDark }}>Validation Checks</span>
+            <button onClick={() => setCapsExpanded(false)} style={{ background: "none", border: "none", cursor: "pointer", color: C.textMuted, fontSize: 10 }}>✕ Hide</button>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <div>
+              <div style={{ fontWeight: 700, color: C.success, marginBottom: 4 }}>Active</div>
+              {["Curfew violations (with cargo exemptions & buffer warnings)", "Schedule conflicts", "Station connectivity", "Block time validation",
+                "Turnaround analysis (cargo-aware)", "Maintenance slot validation (5 checks)", "Weekly rotation continuity", "Payload vs structural & route limits",
+                "Ultra-long-haul detection (>17h)", "Per-flight curfew waivers"].map(t => (
+                <div key={t} style={{ display: "flex", gap: 4, alignItems: "center" }}><span style={{ color: C.success }}>●</span> {t}</div>
+              ))}
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, color: C.textMuted, marginBottom: 4 }}>Planned</div>
+              {["Crew duty / FTL limits", "ETOPS constraints", "Dangerous goods routing", "Aircraft maintenance cadence (C-check / A-check)", "Fuel / range checks"].map(t => (
+                <div key={t} style={{ display: "flex", gap: 4, alignItems: "center" }}><span style={{ color: C.textMuted }}>○</span> {t}</div>
+              ))}
+            </div>
+          </div>
+          <div style={{ marginTop: 8, fontSize: 9, color: C.textMuted }}>Covering 10 of 15 planned check categories</div>
+        </div>
+      )}
+      {!capsExpanded && (
+        <button onClick={() => setCapsExpanded(true)} style={{
+          background: "none", border: `1px solid ${C.brownLight}`, borderRadius: 4, padding: "3px 10px",
+          cursor: "pointer", fontSize: 9, color: C.textMuted, fontFamily: FONT, marginBottom: 12,
+        }}>Show validation capabilities</button>
+      )}
+      {/* ── Schedule Readiness Checklist ── */}
+      {(() => {
+        // Auto-evaluate the 9 checklist items from the issues list
+        const curfewErrors = issues.filter(i => i.category === "Curfew" && i.severity === "error").length;
+        const conflictCount = issues.filter(i => i.category === "Conflict").length;
+        const connectCount = issues.filter(i => i.category === "Connectivity").length;
+        const turnViolations = issues.filter(i => i.category === "Turnaround" && i.severity === "error").length;
+        const maintErrors = issues.filter(i => i.category === "Maintenance" && i.severity === "error").length;
+        const continuityCt = issues.filter(i => i.category === "Continuity").length;
+        const ultraLong = issues.filter(i => i.category === "Ultra-Long").length;
+
+        // Block time tolerance check: flights in table with >5% deviation
+        const blockDevFlights = flights.filter(f => {
+          if (f.acId === POOL_AC_ID) return false;
+          const entry = lookupBlockEntry(f.route, flightAoc(f.acId), f.flightNum);
+          if (!entry) return false;
+          const tableBlock = extractBlock(entry, activeSeason);
+          if (!tableBlock || tableBlock <= 0) return false;
+          return Math.abs(f.block - tableBlock) / tableBlock > BLOCK_TOLERANCE_PCT;
+        });
+
+        // Cargo flights where route payload < structural max
+        const payloadConstrained = flights.filter(f => {
+          if (f.acId === POOL_AC_ID) return false;
+          if (f.cargoOp === "none" || f.type === "P" || f.type === "M") return false;
+          const entry = lookupBlockEntry(f.route, flightAoc(f.acId), f.flightNum);
+          const routePayload = entry ? extractPayload(entry, activeSeason) : null;
+          return routePayload != null && routePayload < (FUEL_MODELS?.structMax || 105000);
+        });
+
+        const items = [
+          { label: "Zero curfew violations (or all waived)", status: curfewErrors === 0 ? "pass" : "fail", count: curfewErrors },
+          { label: "Zero schedule conflicts", status: conflictCount === 0 ? "pass" : "fail", count: conflictCount },
+          { label: "Zero connectivity breaks", status: connectCount === 0 ? "pass" : "fail", count: connectCount },
+          { label: "All turnarounds meet minimums", status: turnViolations === 0 ? "pass" : "fail", count: turnViolations },
+          { label: "All aircraft visit a maintenance base", status: maintErrors === 0 ? "pass" : "fail", count: maintErrors },
+          { label: "Weekly rotation closes", status: continuityCt === 0 ? "pass" : "warn", count: continuityCt },
+          { label: "Block times within 5% of table", status: blockDevFlights.length === 0 ? "pass" : "warn", count: blockDevFlights.length },
+          { label: "Cargo flights have adequate payload", status: payloadConstrained.length === 0 ? "pass" : "warn", count: payloadConstrained.length },
+          { label: "No flights exceeding 17 hours", status: ultraLong === 0 ? "pass" : "warn", count: ultraLong },
+        ];
+        const passed = items.filter(i => i.status === "pass").length;
+        const failed = items.filter(i => i.status === "fail").length;
+        const warned = items.filter(i => i.status === "warn").length;
+        const statusIcon = { pass: "✓", fail: "✗", warn: "⚠" };
+        const statusColor = { pass: C.success, fail: C.danger, warn: C.yellowHeavy };
+        const statusBg = { pass: C.successLight || "#ECFDF5", fail: C.dangerLight, warn: C.warnLight };
+
+        return (
+          <div style={{
+            marginBottom: 20, padding: "16px 20px", borderRadius: 10,
+            border: `2px solid ${failed > 0 ? C.danger : warned > 0 ? C.yellowHeavy : C.success}`,
+            background: C.white,
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.brownDark, marginBottom: 12 }}>Schedule Readiness Checklist</div>
+            {items.map((item, idx) => (
+              <div key={idx} style={{
+                display: "flex", alignItems: "center", gap: 10, padding: "5px 0",
+                borderBottom: idx < items.length - 1 ? `1px solid ${C.offWhite2}` : "none",
+              }}>
+                <span style={{
+                  width: 22, height: 22, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                  background: statusBg[item.status], color: statusColor[item.status],
+                  fontSize: 12, fontWeight: 700, flexShrink: 0,
+                }}>{statusIcon[item.status]}</span>
+                <span style={{ flex: 1, fontSize: 11, color: C.text }}>{item.label}</span>
+                <span style={{
+                  fontSize: 10, fontWeight: 700, color: statusColor[item.status],
+                  padding: "2px 8px", borderRadius: 4, background: statusBg[item.status],
+                }}>
+                  {item.status === "pass" ? "PASS" : item.status === "fail" ? `FAIL (${item.count})` : `WARN (${item.count})`}
+                </span>
+              </div>
+            ))}
+            <div style={{ marginTop: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 10, color: C.textMuted }}>
+                {passed} of {items.length} passed{failed > 0 ? ` · ${failed} failed` : ""}{warned > 0 ? ` · ${warned} warning${warned > 1 ? "s" : ""}` : ""}
+              </span>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 16, flexWrap: "wrap" }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: C.brownDark }}>Operational Feasibility</div>
@@ -13011,12 +13215,16 @@ function FeasibilityTab() {
           <div style={{ fontSize: 12, color: C.success, fontWeight: 600 }}>✓ All checks passed</div>
         )}
 
-        <div style={{ marginLeft: "auto" }}>
-          <select
-            style={{ fontFamily: FONT, fontSize: 11, padding: "4px 8px", borderRadius: 5, border: `1px solid ${C.brownLight}`, background: C.white, color: C.text }}
-            value={filterCat}
-            onChange={e => setFilterCat(e.target.value)}
-          >
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <select style={{ fontFamily: FONT, fontSize: 11, padding: "4px 8px", borderRadius: 5, border: `1px solid ${C.brownLight}`, background: C.white, color: C.text }}
+            value={filterAc} onChange={e => setFilterAc(e.target.value)}>
+            <option value="all">All aircraft</option>
+            {aircraft.filter(a => a.id !== POOL_AC_ID).map(ac => (
+              <option key={ac.id} value={ac.reg}>{ac.reg}</option>
+            ))}
+          </select>
+          <select style={{ fontFamily: FONT, fontSize: 11, padding: "4px 8px", borderRadius: 5, border: `1px solid ${C.brownLight}`, background: C.white, color: C.text }}
+            value={filterCat} onChange={e => setFilterCat(e.target.value)}>
             <option value="all">All categories ({issues.length})</option>
             {categories.map(c => (
               <option key={c} value={c}>{c} ({issues.filter(i => i.category === c).length})</option>
@@ -13025,67 +13233,111 @@ function FeasibilityTab() {
         </div>
       </div>
 
-      {/* Summary cards */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
-        {categories.map(cat => {
-          const catIssues = issues.filter(i => i.category === cat);
-          const worst = catIssues.some(i => i.severity === "error") ? "error" : catIssues.some(i => i.severity === "warning") ? "warning" : "info";
-          const ws = sevStyle(worst);
+      {/* Per-aircraft health summary bar */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        {aircraft.filter(a => a.id !== POOL_AC_ID).map(ac => {
+          const acIssues = issues.filter(i => i.reg === ac.reg);
+          const errs = acIssues.filter(i => i.severity === "error").length;
+          const warns = acIssues.filter(i => i.severity === "warning").length;
+          const dot = errs > 0 ? C.danger : warns > 0 ? C.yellowHeavy : C.success;
           return (
-            <button key={cat}
-              onClick={() => setFilterCat(filterCat === cat ? "all" : cat)}
+            <button key={ac.id} onClick={() => { setFilterAc(filterAc === ac.reg ? "all" : ac.reg); }}
               style={{
-                padding: "8px 14px", borderRadius: 8, cursor: "pointer",
-                border: `2px solid ${filterCat === cat ? ws.color : C.brownLight}`,
-                background: filterCat === cat ? ws.bg : C.white,
-                fontFamily: FONT, fontSize: 11, fontWeight: 600,
-                color: filterCat === cat ? ws.color : C.textSoft,
-                display: "flex", alignItems: "center", gap: 6,
-              }}
-            >
-              <span style={{ width: 8, height: 8, borderRadius: "50%", background: ws.color, display: "inline-block" }} />
-              {cat} <span style={{ fontWeight: 400 }}>({catIssues.length})</span>
+                padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontFamily: FONT,
+                border: `2px solid ${filterAc === ac.reg ? dot : C.brownLight}`,
+                background: filterAc === ac.reg ? (errs > 0 ? C.dangerLight : warns > 0 ? C.warnLight : C.successLight) : C.white,
+                display: "flex", alignItems: "center", gap: 6, fontSize: 11,
+              }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: dot, display: "inline-block" }} />
+              <span style={{ fontWeight: 700, color: C.brownDark }}>{ac.reg}</span>
+              {(errs > 0 || warns > 0) && (
+                <span style={{ fontSize: 9, color: C.textMuted }}>
+                  {errs > 0 && <span style={{ color: C.danger }}>{errs}E</span>}
+                  {errs > 0 && warns > 0 && " "}
+                  {warns > 0 && <span style={{ color: C.yellowHeavy }}>{warns}W</span>}
+                </span>
+              )}
             </button>
           );
         })}
       </div>
 
-      {/* Issues table */}
-      {filtered.length > 0 && (
-        <div style={{ overflowX: "auto", borderRadius: 10, border: `1px solid ${C.brownLight}`, background: C.white }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: FONT }}>
-            <thead>
-              <tr style={{ background: C.offWhite2 }}>
-                <th style={thS}>Severity</th>
-                <th style={thS}>Category</th>
-                <th style={thS}>Aircraft</th>
-                <th style={thS}>Flight</th>
-                <th style={thS}>Route</th>
-                <th style={thS}>Day</th>
-                <th style={{ ...thS, width: "40%" }}>Detail</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((issue, idx) => {
-                const sv = sevStyle(issue.severity);
-                return (
-                  <tr key={idx} style={{ background: idx % 2 === 0 ? C.white : C.bg }}>
-                    <td style={tdS}>
-                      <Badge color={sv.color} bg={sv.bg}>{sv.label}</Badge>
-                    </td>
-                    <td style={{ ...tdS, fontWeight: 600 }}>{issue.category}</td>
-                    <td style={{ ...tdS, fontFamily: FONT, fontWeight: 700, fontSize: 11 }}>{issue.reg}</td>
-                    <td style={{ ...tdS, fontFamily: FONT, fontSize: 11 }}>{issue.flightNum || "—"}</td>
-                    <td style={{ ...tdS, fontFamily: FONT, fontSize: 11 }}>{issue.route}</td>
-                    <td style={{ ...tdS, textAlign: "center" }}>{DAY_NAMES[(issue.day || 1) - 1]}</td>
-                    <td style={{ ...tdS, fontSize: 10, color: C.textSoft }}>{issue.detail}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {/* Issues grouped by aircraft */}
+      {(() => {
+        // Group filtered issues by aircraft
+        const byAc = {};
+        filtered.forEach(i => { const k = i.reg || "Schedule"; (byAc[k] = byAc[k] || []).push(i); });
+        const acRegs = aircraft.filter(a => a.id !== POOL_AC_ID).map(a => a.reg);
+        const orderedKeys = acRegs.filter(r => byAc[r]?.length > 0);
+        if (byAc["Schedule"]) orderedKeys.push("Schedule");
+        if (byAc["?"]) orderedKeys.push("?");
+
+        const navigateToFlight = (issue) => {
+          if (ui?.ganttSearchRef) ui.ganttSearchRef.current = issue.flightNum || issue.route || "";
+          dispatch({ type: A.SET_TAB, tab: "gantt" });
+        };
+
+        if (orderedKeys.length === 0) return null;
+
+        return orderedKeys.map(reg => {
+          const acIssues = byAc[reg];
+          const errs = acIssues.filter(i => i.severity === "error").length;
+          const warns = acIssues.filter(i => i.severity === "warning").length;
+          const infos = acIssues.filter(i => i.severity === "info").length;
+          const isExpanded = expandedAc === null || expandedAc === reg;
+
+          return (
+            <div key={reg} style={{ marginBottom: 12 }}>
+              <button onClick={() => setExpandedAc(expandedAc === reg ? null : (isExpanded ? "__none__" : reg))}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left",
+                  padding: "8px 14px", borderRadius: 8, cursor: "pointer", fontFamily: FONT, fontSize: 12,
+                  border: `1px solid ${C.brownLight}`, background: errs > 0 ? C.dangerLight : warns > 0 ? C.warnLight : C.offWhite2,
+                  fontWeight: 700, color: C.brownDark,
+                }}>
+                <span style={{ fontSize: 10 }}>{isExpanded ? "▼" : "▶"}</span>
+                <span>{reg}</span>
+                {errs > 0 && <Badge color={C.danger} bg="rgba(220,38,38,0.15)">{errs}E</Badge>}
+                {warns > 0 && <Badge color={C.yellowHeavy} bg="rgba(245,158,11,0.15)">{warns}W</Badge>}
+                {infos > 0 && <Badge color={C.textSoft} bg={C.offWhite2}>{infos}I</Badge>}
+              </button>
+              {isExpanded && (
+                <div style={{ overflowX: "auto", borderRadius: "0 0 10px 10px", border: `1px solid ${C.brownLight}`, borderTop: "none", background: C.white }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: FONT }}>
+                    <thead>
+                      <tr style={{ background: C.offWhite2 }}>
+                        <th style={thS}>Severity</th>
+                        <th style={thS}>Category</th>
+                        <th style={thS}>Flight</th>
+                        <th style={thS}>Route</th>
+                        <th style={thS}>Day</th>
+                        <th style={{ ...thS, width: "45%" }}>Detail</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {acIssues.map((issue, idx) => {
+                        const sv = sevStyle(issue.severity);
+                        return (
+                          <tr key={idx} onClick={() => navigateToFlight(issue)}
+                            style={{ background: idx % 2 === 0 ? C.white : C.bg, cursor: "pointer" }}
+                            title="Click to view in Gantt">
+                            <td style={tdS}><Badge color={sv.color} bg={sv.bg}>{sv.label}</Badge></td>
+                            <td style={{ ...tdS, fontWeight: 600 }}>{issue.category}</td>
+                            <td style={{ ...tdS, fontFamily: FONT, fontSize: 11 }}>{issue.flightNum || "—"}</td>
+                            <td style={{ ...tdS, fontFamily: FONT, fontSize: 11 }}>{issue.route}</td>
+                            <td style={{ ...tdS, textAlign: "center" }}>{DAY_NAMES[(issue.day || 1) - 1]}</td>
+                            <td style={{ ...tdS, fontSize: 10, color: C.textSoft }}>{issue.detail}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          );
+        });
+      })()}
 
       {/* ── Curfew Reference: restricted stations in this schedule ─── */}
       {(() => {
@@ -13134,6 +13386,7 @@ function FeasibilityTab() {
                     <th style={thC}>Dep Close</th>
                     <th style={thC}>Arr Open</th>
                     <th style={thC}>Arr Close</th>
+                    <th style={{ ...thC, color: C.success }}>Cargo Exempt</th>
                     <th style={thC}>Notes</th>
                   </tr>
                 </thead>
@@ -13146,6 +13399,7 @@ function FeasibilityTab() {
                       <td style={{ ...tdC, fontFamily: FONT }}>{ap.depClose != null ? toHHMM(ap.depClose) : "—"}</td>
                       <td style={{ ...tdC, fontFamily: FONT }}>{ap.arrOpen != null ? toHHMM(ap.arrOpen) : "—"}</td>
                       <td style={{ ...tdC, fontFamily: FONT }}>{ap.arrClose != null ? toHHMM(ap.arrClose) : "—"}</td>
+                      <td style={{ ...tdC, textAlign: "center" }}>{ap.cargoExempt ? <span style={{ color: C.success, fontWeight: 700 }}>✓</span> : "—"}</td>
                       <td style={{ ...tdC, fontSize: 9, color: C.textMuted, fontStyle: "italic" }}>{ap.notes || ""}</td>
                     </tr>
                   ))}
@@ -13720,15 +13974,6 @@ function RotationTab() {
   return (
     <div style={{ padding: 24, maxWidth: 1400, margin: "0 auto", fontFamily: FONT }}>
 
-      <div style={{
-        marginBottom: 16, padding: "10px 16px", borderRadius: 8,
-        background: C.dangerLight, color: C.danger,
-        border: "1px solid #FECACA", fontSize: 12, fontWeight: 600,
-        display: "flex", alignItems: "center", gap: 8,
-      }}>
-        <span style={{ fontSize: 16 }}>⚠︎</span>
-        Work in progress — this tab is under development and should not be used for operational purposes.
-      </div>
 
       {/* ── Rotation Manager ─────────────────────────────── */}
       <div style={{ marginBottom: 20 }}>
@@ -14528,20 +14773,29 @@ function AppShell({ authEmail, onSignOut }) {
     [flights]
   );
 
-  // Quick feasibility error count for tab badge
-  const feasibilityErrors = useMemo(() => {
-    let n = 0;
-    const tableRoutes = new Set(blockTable.map(b => b.route));
+  // Feasibility error/warning counts for tab badge (lightweight, runs in AppShell)
+  const feasibilityCounts = useMemo(() => {
+    let errors = 0, warnings = 0;
     flights.forEach(f => {
-      if (!FLIGHT_TYPES[f.type]) n++;
-      if (!f.flightNum || !f.flightNum.trim()) n++;
-      const [dep, arr] = (f.route || "").split("-");
-      if (dep && !airports.find(a => a.code === dep)) n++;
-      if (arr && !airports.find(a => a.code === arr)) n++;
-      if (f.route && !tableRoutes.has(f.route)) n++;
+      if (f.acId === POOL_AC_ID) return;
+      // Conflict: simple overlap check
+      const fStart = weekMins(f.day, f.dep), fEnd = fStart + f.block;
+      const hasConf = flights.some(o => o.id !== f.id && o.acId === f.acId && (() => {
+        const oS = weekMins(o.day, o.dep); return oS < fEnd && fStart < oS + o.block;
+      })());
+      if (hasConf) errors++;
+      // Payload overweight
+      const ac = aircraft.find(a => a.id === f.acId);
+      if (f.payload > 0 && ac?.maxPayload > 0 && f.payload > ac.maxPayload) errors++;
+      // Ultra-long
+      if (f.block > MAX_BLOCK_MINS) warnings++;
+      // Unvalidated route
+      const tableRoutes = blockTable.map(b => b.route);
+      if (f.route && !tableRoutes.includes(f.route)) warnings++;
     });
-    return n;
-  }, [flights, airports, blockTable]);
+    return { errors, warnings, total: errors + warnings };
+  }, [flights, aircraft, blockTable]);
+  const feasibilityErrors = feasibilityCounts.total;
   const totalPayloadKg = useMemo(
     () => flights.filter(f => ["F","H"].includes(f.type)).reduce((s, f) => s + (f.payload || 0), 0),
     [flights]
@@ -15124,13 +15378,21 @@ function AppShell({ authEmail, onSignOut }) {
                 }}
               >
                 {label}
-                {key === "feasibility" && feasibilityErrors > 0 && (
+                {key === "feasibility" && feasibilityCounts.errors > 0 && (
                   <span style={{
                     minWidth: 15, height: 15, borderRadius: 8,
                     background: C.danger, color: "#FFFFFF",
                     fontSize: 8, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center",
                     padding: "0 4px",
-                  }}>{feasibilityErrors}</span>
+                  }}>{feasibilityCounts.errors}</span>
+                )}
+                {key === "feasibility" && feasibilityCounts.warnings > 0 && feasibilityCounts.errors === 0 && (
+                  <span style={{
+                    minWidth: 15, height: 15, borderRadius: 8,
+                    background: C.yellowHeavy, color: "#FFFFFF",
+                    fontSize: 8, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center",
+                    padding: "0 4px",
+                  }}>{feasibilityCounts.warnings}</span>
                 )}
               </button>
             );
