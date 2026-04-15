@@ -513,6 +513,8 @@ const RESTRICTION_LABELS = { none: "None", hard_curfew: "Hard Curfew", quota: "N
 const RESTRICTION_COLORS = { hard_curfew: { c: "#DC2626", b: "#FEE2E2" }, quota: { c: "#D97706", b: "#FEF3C7" }, noise_managed: { c: "#2563EB", b: "#EFF6FF" }, prior_approval: { c: "#7C3AED", b: "#F5F3FF" }, temporary: { c: "#EA580C", b: "#FFF7ED" } };
 const MAX_BLOCK_MINS           = 1020; // 17 hours — flag flights exceeding this
 const MAX_WEEKLY_BLOCK_HOURS   = 115;  // max weekly block hours per aircraft line
+const MIN_5Y_WEEKLY_BLOCK_HRS  = 345;  // minimum 5Y fleet weekly block hours (4500h/quarter ÷ 13 weeks)
+const MAX_FERRY_RATIO          = 0.50; // ferry block hours must not exceed 50% of total (revenue ≥ ferry)
 const BLOCK_TOLERANCE_PCT      = 0.05; // 5% tolerance for block time vs table check
 const TURN_COLOR_VIOLATION = C.danger;
 const TURN_COLOR_OK        = C.brownLight;
@@ -13180,6 +13182,59 @@ function FeasibilityTab() {
       }
     });
 
+    // 5Y fleet minimum weekly block hours (ACMI guarantee)
+    const fleet5Y = aircraft.filter(ac => ac.id !== POOL_AC_ID && deriveAoc(ac.reg).code === "5Y");
+    if (fleet5Y.length > 0) {
+      const total5YBlockMins = flights
+        .filter(f => fleet5Y.some(ac => ac.id === f.acId))
+        .reduce((sum, f) => sum + (f.block || 0), 0);
+      const total5YBlockHrs = total5YBlockMins / 60;
+      if (total5YBlockHrs < MIN_5Y_WEEKLY_BLOCK_HRS) {
+        list.push({
+          flightId: fleet5Y[0]?.id || "5y_fleet", reg: "5Y Fleet", route: "", day: 1,
+          flightNum: "", category: "Fleet Utilisation", severity: "warning",
+          detail: `5Y fleet total ${total5YBlockHrs.toFixed(1)}h/week is below ${MIN_5Y_WEEKLY_BLOCK_HRS}h minimum (${MIN_5Y_WEEKLY_BLOCK_HRS} × 13 weeks = ${MIN_5Y_WEEKLY_BLOCK_HRS * 13}h/quarter ACMI guarantee of 4,500h)`,
+        });
+      }
+    }
+
+    // Ferry ratio per aircraft — ferry block hours should not exceed revenue block hours
+    aircraft.filter(ac => ac.id !== POOL_AC_ID).forEach(ac => {
+      const acFlights = flights.filter(f => f.acId === ac.id);
+      const revenueMins = acFlights.filter(f => f.type === "F" || f.type === "H").reduce((s, f) => s + (f.block || 0), 0);
+      const ferryMins = acFlights.filter(f => f.type === "P").reduce((s, f) => s + (f.block || 0), 0);
+      const totalMins = revenueMins + ferryMins;
+      if (totalMins > 0 && ferryMins > totalMins * MAX_FERRY_RATIO) {
+        const ferryPct = ((ferryMins / totalMins) * 100).toFixed(0);
+        const revPct = (100 - ferryMins / totalMins * 100).toFixed(0);
+        list.push({
+          flightId: acFlights[0]?.id || ac.id, reg: ac.reg, route: "", day: 1,
+          flightNum: "", category: "Ferry Ratio", severity: "warning",
+          detail: `${ac.reg} ferry ratio ${ferryPct}% (${(ferryMins/60).toFixed(1)}h ferry / ${(revenueMins/60).toFixed(1)}h revenue). Revenue share ${revPct}% is below 50% minimum.`,
+        });
+      }
+    });
+
+    // Charter gap regulatory assessment (advisory — user must check manually)
+    // Flag long gaps (>8h) where a charter could be inserted
+    aircraft.filter(ac => ac.id !== POOL_AC_ID).forEach(ac => {
+      const acFlights = flights.filter(f => f.acId === ac.id).sort((a, b) => weekMins(a.day, a.dep) - weekMins(b.day, b.dep));
+      for (let i = 0; i < acFlights.length - 1; i++) {
+        const curr = acFlights[i], next = acFlights[i + 1];
+        const arrWM = weekMins(curr.day, curr.dep) + curr.block;
+        const depWM = weekMins(next.day, next.dep);
+        const gap = depWM - arrWM;
+        if (gap >= 480) { // 8+ hours gap
+          const dest = (curr.route || "").split("-")[1] || "?";
+          list.push({
+            flightId: curr.id, reg: ac.reg, route: curr.route, day: curr.day,
+            flightNum: curr.flightNum || "", category: "Charter Gap", severity: "info",
+            detail: `${(gap/60).toFixed(1)}h gap at ${dest} (Day ${DAY_NAMES[(curr.day||1)-1]} to Day ${DAY_NAMES[(next.day||1)-1]}). If charter: verify regulatory permits for follow-on routing (5th/7th freedom) and ferry positioning.`,
+          });
+        }
+      }
+    });
+
     // Sort: errors first, then warnings, then info
     list.sort((a, b) => sev(a.severity) - sev(b.severity));
     return list;
@@ -13249,6 +13304,9 @@ function FeasibilityTab() {
             { label: "Valid block times", failLevel: "warn",
               desc: "Checks that all flight block times are validated against the route table. Flags routes not in the table (unvalidated) and flights where block time deviates more than 5% from the operational or performance values.",
               filter: i => i.category === "Block Mismatch" || i.category === "Unvalidated Block" },
+            { label: "Compliance with slot requirements", failLevel: "info",
+              desc: "Under development — will validate that flights at slot-coordinated airports (AMS, LHR, YYZ, ORD Summer) have allocated slots. Currently advisory only.",
+              filter: () => false },
           ]},
           { title: "Network Design Guardrails", items: [
             { label: "Cargo flights have adequate payload", failLevel: "warn",
@@ -13263,6 +13321,15 @@ function FeasibilityTab() {
             { label: "No single-turn stations", failLevel: "warn",
               desc: "Flags airports with only one turnaround (arrival) per week in the schedule. Single-turn stations stretch the operation, reduce network resilience, and limit recovery options if that flight is disrupted.",
               filter: i => i.category === "Single-Turn Station" },
+            { label: "5Y fleet minimum block hours (ACMI guarantee)", failLevel: "warn",
+              desc: `The 5Y fleet weekly block hours should not fall below ${MIN_5Y_WEEKLY_BLOCK_HRS}h. At 13 weeks per quarter this equates to the minimum ACMI block hour guarantee of ${MIN_5Y_WEEKLY_BLOCK_HRS * 13}h per quarter.`,
+              filter: i => i.category === "Fleet Utilisation" },
+            { label: "Ferry ratio per aircraft (revenue ≥ 50%)", failLevel: "warn",
+              desc: "Revenue block hours should be at least 50% of total flying per aircraft. A ferry ratio exceeding 50% indicates inefficient positioning and erodes the commercial viability of the line.",
+              filter: i => i.category === "Ferry Ratio" },
+            { label: "Charter gap regulatory assessment", failLevel: "info",
+              desc: "Flags long gaps (8+ hours) where a charter could be inserted. User should verify that any follow-on routing from the gap station has the necessary regulatory permits (5th/7th freedom rights) and that connecting ferry flights are operationally efficient.",
+              filter: i => i.category === "Charter Gap" },
           ]},
         ];
         const checkItems = checkSections.flatMap(s => s.items);
