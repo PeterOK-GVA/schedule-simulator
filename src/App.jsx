@@ -12864,7 +12864,8 @@ function FeasibilityTab() {
     const list = [];
     const sev = (s) => s === "error" ? 0 : s === "warning" ? 1 : 2;
 
-    flights.forEach(f => {
+    // Workspace/pool flights are staging — not part of the active schedule, so excluded from per-flight checks.
+    flights.filter(f => f.acId !== POOL_AC_ID).forEach(f => {
       const ac = aircraft.find(a => a.id === f.acId);
       const reg = ac?.reg || "?";
       const base = { flightId: f.id, flightNum: f.flightNum || "", route: f.route || "", day: f.day, reg };
@@ -12940,9 +12941,16 @@ function FeasibilityTab() {
         list.push({ ...base, category: "Unclassified", severity: "info", detail: `Flight type "${f.type}" — not classified as F, H or P` });
       }
 
-      // Missing flight number
+      // Missing flight number — admin/data completeness, surfaced as its own Operational Requirement
       if (!f.flightNum || !f.flightNum.trim()) {
-        list.push({ ...base, category: "Missing Data", severity: "info", detail: "No flight number assigned" });
+        list.push({ ...base, category: "Missing Flight Number", severity: "warning", detail: "No flight number assigned" });
+      }
+
+      // Cargo movement not specified — only applies to revenue (F/H). P/M auto-force to "none",
+      // and "none" is a legitimate user choice on F/H. We flag only the unset/empty case,
+      // which is an admin oversight that breaks turnaround and swap-coverage calculations.
+      if ((f.type === "F" || f.type === "H") && (f.cargoOp == null || f.cargoOp === "")) {
+        list.push({ ...base, category: "Cargo Movement", severity: "warning", detail: "Cargo movement not specified (set to Both / Up / Off / None on the flight)" });
       }
 
       // Unknown airports
@@ -13200,22 +13208,37 @@ function FeasibilityTab() {
       }
     }
 
-    // Ferry ratio per aircraft — ferry block hours should not exceed revenue block hours
-    aircraft.filter(ac => ac.id !== POOL_AC_ID).forEach(ac => {
-      const acFlights = flights.filter(f => f.acId === ac.id);
-      const revenueMins = acFlights.filter(f => f.type === "F" || f.type === "H").reduce((s, f) => s + (f.block || 0), 0);
-      const ferryMins = acFlights.filter(f => f.type === "P").reduce((s, f) => s + (f.block || 0), 0);
-      const totalMins = revenueMins + ferryMins;
-      if (totalMins > 0 && ferryMins > totalMins * MAX_FERRY_RATIO) {
-        const ferryPct = ((ferryMins / totalMins) * 100).toFixed(0);
-        const revPct = (100 - ferryMins / totalMins * 100).toFixed(0);
-        list.push({
-          flightId: acFlights[0]?.id || ac.id, reg: ac.reg, route: "", day: 1,
-          flightNum: "", category: "Ferry Ratio", severity: "warning",
-          detail: `${ac.reg} ferry ratio ${ferryPct}% (${(ferryMins/60).toFixed(1)}h ferry / ${(revenueMins/60).toFixed(1)}h revenue). Revenue share ${revPct}% is below 50% minimum.`,
-        });
-      }
-    });
+    // Ferry ratio per AOC — revenue block hours should be ≥50% of total flying across the AOC
+    // (aggregated across all aircraft in the AOC, not per-aircraft — a light ferry week on one
+    // tail can legitimately offset a heavy ferry week on another as long as the AOC as a whole
+    // stays within the guardrail).
+    {
+      const aocAgg = new Map(); // aocCode -> { aoc, revenueMins, ferryMins, tailCount }
+      aircraft.filter(ac => ac.id !== POOL_AC_ID).forEach(ac => {
+        const aoc = deriveAoc(ac.reg);
+        const code = aoc.code;
+        const acFlights = flights.filter(f => f.acId === ac.id);
+        const revenueMins = acFlights.filter(f => f.type === "F" || f.type === "H").reduce((s, f) => s + (f.block || 0), 0);
+        const ferryMins = acFlights.filter(f => f.type === "P").reduce((s, f) => s + (f.block || 0), 0);
+        if (!aocAgg.has(code)) aocAgg.set(code, { aoc, revenueMins: 0, ferryMins: 0, tailCount: 0 });
+        const entry = aocAgg.get(code);
+        entry.revenueMins += revenueMins;
+        entry.ferryMins += ferryMins;
+        entry.tailCount += 1;
+      });
+      aocAgg.forEach(({ aoc, revenueMins, ferryMins, tailCount }, code) => {
+        const totalMins = revenueMins + ferryMins;
+        if (totalMins > 0 && ferryMins > totalMins * MAX_FERRY_RATIO) {
+          const ferryPct = ((ferryMins / totalMins) * 100).toFixed(0);
+          const revPct = (100 - ferryMins / totalMins * 100).toFixed(0);
+          list.push({
+            flightId: `aoc_${code}`, reg: `${aoc.name} (${code})`, route: "", day: 1,
+            flightNum: "", category: "Ferry Ratio", severity: "warning",
+            detail: `${aoc.name} (${code}) AOC ferry ratio ${ferryPct}% across ${tailCount} tail${tailCount === 1 ? "" : "s"} (${(ferryMins/60).toFixed(1)}h ferry / ${(revenueMins/60).toFixed(1)}h revenue). Revenue share ${revPct}% is below 50% minimum.`,
+          });
+        }
+      });
+    }
 
     // Charter gap regulatory assessment (advisory — user must check manually)
     // Flag long gaps (>8h) where a charter could be inserted
@@ -13413,6 +13436,9 @@ function FeasibilityTab() {
             { label: "Valid block times", failLevel: "warn",
               desc: "Checks that all flight block times are validated against the route table. Flags routes not in the table (unvalidated) and flights where block time deviates more than 5% from the operational or performance values.",
               filter: i => i.category === "Block Mismatch" || i.category === "Unvalidated Block" },
+            { label: "All flights have a flight number", failLevel: "warn",
+              desc: "Every flight should have a flight number assigned. Missing numbers are an admin/data-completeness issue — several downstream functions (route table lookups, AOC derivation, reporting) rely on the flight number being populated.",
+              filter: i => i.category === "Missing Flight Number" },
             { label: "Compliance with slot requirements", failLevel: "info",
               desc: "Under development — will validate that flights at slot-coordinated airports (AMS, LHR, YYZ, ORD Summer) have allocated slots. Currently advisory only.",
               filter: () => false },
@@ -13433,8 +13459,8 @@ function FeasibilityTab() {
             { label: "5Y fleet minimum block hours (ACMI guarantee)", failLevel: "warn",
               desc: `The 5Y fleet weekly block hours should not fall below ${MIN_5Y_WEEKLY_BLOCK_HRS}h. At 13 weeks per quarter this equates to the minimum ACMI block hour guarantee of ${MIN_5Y_WEEKLY_BLOCK_HRS * 13}h per quarter.`,
               filter: i => i.category === "Fleet Utilisation" },
-            { label: "Ferry ratio per aircraft (revenue ≥ 50%)", failLevel: "warn",
-              desc: "Revenue block hours should be at least 50% of total flying per aircraft. A ferry ratio exceeding 50% indicates inefficient positioning and erodes the commercial viability of the line.",
+            { label: "Ferry ratio per AOC (revenue ≥ 50%)", failLevel: "warn",
+              desc: "Revenue block hours should be at least 50% of total flying aggregated across each AOC (all tails combined). A ferry ratio exceeding 50% at the AOC level indicates inefficient positioning and erodes the commercial viability of the line. Evaluated per AOC rather than per aircraft so a light week on one tail can offset a heavy ferry week on another within the same AOC.",
               filter: i => i.category === "Ferry Ratio" },
             { label: "Charter gap regulatory assessment", failLevel: "info",
               desc: "Flags long gaps (8+ hours) where a charter could be inserted. User should verify that any follow-on routing from the gap station has the necessary regulatory permits (5th/7th freedom rights) and that connecting ferry flights are operationally efficient.",
@@ -13549,7 +13575,7 @@ function FeasibilityTab() {
                   {isExpanded && (
                     <div style={{ padding: "8px 16px 16px 50px", borderLeft: `3px solid ${C.brownLight}`, marginLeft: 12, background: C.white }}>
                       <div style={{ fontSize: 10, color: C.textSoft, lineHeight: 1.6, marginBottom: 12 }}>
-                        Additional warnings and informational findings including curfew buffer warnings, unverified airports, unknown airports, missing flight data, and unvalidated block times.
+                        Additional warnings and informational findings including curfew buffer warnings, unverified airports, unknown airports, missing cargo movement, and unvalidated block times.
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                         {otherIssues.map((issue, ii) => {
