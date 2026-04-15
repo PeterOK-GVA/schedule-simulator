@@ -13156,6 +13156,32 @@ function FeasibilityTab() {
       }
     });
 
+    // Single-flight stations — airports served by only one flight in the entire schedule
+    // These stretch the operation and reduce recovery options
+    const stationFlightCount = {};
+    flights.filter(f => f.acId !== POOL_AC_ID && f.route).forEach(f => {
+      const [dep, arr] = (f.route || "").split("-");
+      if (dep) stationFlightCount[dep] = (stationFlightCount[dep] || 0) + 1;
+      if (arr) stationFlightCount[arr] = (stationFlightCount[arr] || 0) + 1;
+    });
+    const singleFlightStations = Object.entries(stationFlightCount).filter(([, count]) => count === 1);
+    singleFlightStations.forEach(([station]) => {
+      // Find the flight that uses this station
+      const fl = flights.find(f => {
+        if (f.acId === POOL_AC_ID || !f.route) return false;
+        const [dep, arr] = f.route.split("-");
+        return dep === station || arr === station;
+      });
+      if (fl) {
+        const ac = aircraft.find(a => a.id === fl.acId);
+        list.push({
+          flightId: fl.id, reg: ac?.reg || "?", route: fl.route, day: fl.day,
+          flightNum: fl.flightNum || "", category: "Single-Flight Station", severity: "warning",
+          detail: `${station} is served by only 1 flight in the schedule (${fl.flightNum || fl.route}). Single-flight stations stretch operations and limit recovery options.`,
+        });
+      }
+    });
+
     // Sort: errors first, then warnings, then info
     list.sort((a, b) => sev(a.severity) - sev(b.severity));
     return list;
@@ -13233,6 +13259,9 @@ function FeasibilityTab() {
           { label: "Aircraft weekly utilisation under 115 block hours", failLevel: "warn",
             desc: "Checks that no aircraft line exceeds 115 weekly block hours. Over-utilisation risks crew fatigue, reduces maintenance windows, and leaves no buffer for operational delays.",
             filter: i => i.category === "Utilisation" },
+          { label: "No single-flight stations", failLevel: "warn",
+            desc: "Flags airports served by only one flight in the entire schedule. Single-flight stations stretch the operation, reduce network resilience, and limit recovery options if that flight is disrupted.",
+            filter: i => i.category === "Single-Flight Station" },
         ];
 
         const otherIssues = issues.filter(i => !checkItems.some(ci => ci.filter(i)));
