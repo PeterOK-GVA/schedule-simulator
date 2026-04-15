@@ -516,6 +516,8 @@ const MAX_WEEKLY_BLOCK_HOURS   = 115;  // max weekly block hours per aircraft li
 const MIN_5Y_WEEKLY_BLOCK_HRS  = 345;  // minimum 5Y fleet weekly block hours (4500h/quarter ÷ 13 weeks)
 const MAX_FERRY_RATIO          = 0.50; // ferry block hours must not exceed 50% of total (revenue ≥ ferry)
 const BLOCK_TOLERANCE_PCT      = 0.05; // 5% tolerance for block time vs table check
+const SWAP_MIN_OVERLAP_MINS    = 180;  // 3h min ground overlap to qualify as swap candidate
+const SWAP_NETWORK_MIN_PCT     = 0.85; // 85% of revenue flights need ≥1 same-AOC swap candidate
 const TURN_COLOR_VIOLATION = C.danger;
 const TURN_COLOR_OK        = C.brownLight;
 
@@ -13235,6 +13237,113 @@ function FeasibilityTab() {
       }
     });
 
+    // ── Swap point coverage check ────────────────────────────────────
+    // Known limitations:
+    // 1. Crew availability not modelled (tail present ≠ crew available)
+    // 2. Cargo transfer time not modelled (full freighter uplift takes 4-6h)
+    // 3. Tech stops excluded — only stations where cargo is offloaded qualify
+    //    (can't swap aircraft mid-flow without cargo handling capability)
+    // 4. Cascading swaps not modelled (B's downstream would also break)
+    // 5. Disruption probability uniform (no weather/strike weighting)
+    // 6. First-order availability only
+    {
+      // Pass 1: Build station occupancy map — ground segments where cargo is worked
+      const stationOccupancy = new Map();
+      const acsByAoc = {};
+      aircraft.filter(ac => ac.id !== POOL_AC_ID).forEach(ac => {
+        const aocCode = deriveAoc(ac.reg).code;
+        acsByAoc[aocCode] = (acsByAoc[aocCode] || 0) + 1;
+        const acFlts = flights.filter(f => f.acId === ac.id).sort((a, b) => weekMins(a.day, a.dep) - weekMins(b.day, b.dep));
+        for (let i = 0; i < acFlts.length; i++) {
+          const f = acFlts[i];
+          const dest = (f.route || "").split("-")[1];
+          // Only count as swap-capable if cargo is being offloaded at this station
+          const hasCargoWork = f.cargoOp === "offload" || f.cargoOp === "both";
+          if (!dest || !hasCargoWork) continue;
+          const arrWM = weekMins(f.day, f.dep) + f.block;
+          if (i < acFlts.length - 1) {
+            const next = acFlts[i + 1];
+            const nextDepWM = weekMins(next.day, next.dep);
+            if (nextDepWM > arrWM) {
+              if (!stationOccupancy.has(dest)) stationOccupancy.set(dest, []);
+              stationOccupancy.get(dest).push({ acId: ac.id, aocCode, startWM: arrWM, endWM: nextDepWM });
+            }
+          }
+        }
+        // Week wrap-around
+        if (acFlts.length >= 2) {
+          const lastF = acFlts[acFlts.length - 1];
+          const firstF = acFlts[0];
+          const lastDest = (lastF.route || "").split("-")[1];
+          const lastHasCargo = lastF.cargoOp === "offload" || lastF.cargoOp === "both";
+          if (lastDest && lastHasCargo) {
+            const lastArrWM = weekMins(lastF.day, lastF.dep) + lastF.block;
+            const firstDepWM = weekMins(firstF.day, firstF.dep) + WEEK_MINS;
+            if (firstDepWM > lastArrWM) {
+              if (!stationOccupancy.has(lastDest)) stationOccupancy.set(lastDest, []);
+              stationOccupancy.get(lastDest).push({ acId: ac.id, aocCode, startWM: lastArrWM, endWM: firstDepWM });
+            }
+          }
+        }
+      });
+
+      // Pass 2: Per-flight swap candidate check (revenue flights only)
+      let totalRevFlights = 0, coveredFlights = 0;
+      flights.filter(f => f.acId !== POOL_AC_ID && (f.type === "F" || f.type === "H")).forEach(f => {
+        const ac = aircraft.find(a => a.id === f.acId);
+        if (!ac) return;
+        const fAoc = deriveAoc(ac.reg).code;
+        // Skip swap check for single-aircraft AOCs
+        if ((acsByAoc[fAoc] || 0) < 2) return;
+        totalRevFlights++;
+        const dep = (f.route || "").split("-")[0];
+        if (!dep) return;
+        const fDepWM = weekMins(f.day, f.dep);
+        const segs = stationOccupancy.get(dep) || [];
+        let sameAocCount = 0, crossAocCount = 0;
+        segs.forEach(seg => {
+          if (seg.acId === f.acId) return; // not the same aircraft
+          const overlapOk = seg.startWM <= fDepWM && (fDepWM - seg.startWM) >= SWAP_MIN_OVERLAP_MINS;
+          const downstreamOk = seg.endWM >= fDepWM + (f.block || 0);
+          if (!overlapOk || !downstreamOk) return;
+          if (seg.aocCode === fAoc) sameAocCount++;
+          else crossAocCount++;
+        });
+        if (sameAocCount > 0) { coveredFlights++; return; }
+        const crossNote = crossAocCount > 0 ? ` (${crossAocCount} cross-AOC candidate(s) — requires >24h coordination)` : "";
+        list.push({
+          flightId: f.id, reg: ac.reg, route: f.route, day: f.day,
+          flightNum: f.flightNum || "", category: "Swap Coverage",
+          severity: f.type === "H" ? "error" : "warning",
+          detail: `No swap aircraft at ${dep} for ${f.flightNum || f.route} Day ${DAY_NAMES[(f.day||1)-1]} — ${f.type === "H" ? "charter with no recovery option" : "single point of failure"}${crossNote}`,
+        });
+      });
+
+      // Pass 3: Network-level + fleet-level
+      if (totalRevFlights > 0 && coveredFlights / totalRevFlights < SWAP_NETWORK_MIN_PCT) {
+        const pct = ((coveredFlights / totalRevFlights) * 100).toFixed(0);
+        const uncovered = totalRevFlights - coveredFlights;
+        list.push({
+          flightId: flights[0]?.id || "network", reg: "Network", route: "", day: 1,
+          flightNum: "", category: "Swap Coverage", severity: "warning",
+          detail: `Network swap coverage ${pct}% — below ${(SWAP_NETWORK_MIN_PCT * 100).toFixed(0)}% target. ${uncovered} of ${totalRevFlights} revenue flights have no same-AOC swap candidate.`,
+        });
+      }
+      // Single-aircraft AOC advisory
+      Object.entries(acsByAoc).forEach(([aoc, count]) => {
+        if (count === 1 && aoc !== "??") {
+          const soleAc = aircraft.find(a => a.id !== POOL_AC_ID && deriveAoc(a.reg).code === aoc);
+          if (soleAc) {
+            list.push({
+              flightId: soleAc.id, reg: soleAc.reg, route: "", day: 1,
+              flightNum: "", category: "Swap Coverage", severity: "info",
+              detail: `${aoc} fleet has only 1 aircraft (${soleAc.reg}) — swap coverage not applicable for this AOC.`,
+            });
+          }
+        }
+      });
+    }
+
     // Sort: errors first, then warnings, then info
     list.sort((a, b) => sev(a.severity) - sev(b.severity));
     return list;
@@ -13330,6 +13439,9 @@ function FeasibilityTab() {
             { label: "Charter gap regulatory assessment", failLevel: "info",
               desc: "Flags long gaps (8+ hours) where a charter could be inserted. User should verify that any follow-on routing from the gap station has the necessary regulatory permits (5th/7th freedom rights) and that connecting ferry flights are operationally efficient.",
               filter: i => i.category === "Charter Gap" },
+            { label: "Revenue flights have swap coverage", failLevel: "warn",
+              desc: `Checks that ≥${(SWAP_NETWORK_MIN_PCT * 100).toFixed(0)}% of revenue flights (F/H) have another same-AOC aircraft on ground at their origin station with ≥${SWAP_MIN_OVERLAP_MINS / 60}h overlap before departure. Only stations where cargo is offloaded qualify (tech stops excluded). Charter (H) without coverage = error. Provides operational resilience for aircraft unserviceability.`,
+              filter: i => i.category === "Swap Coverage" },
           ]},
         ];
         const checkItems = checkSections.flatMap(s => s.items);
