@@ -13226,51 +13226,60 @@ function FeasibilityTab() {
           dispatch({ type: A.SET_TAB, tab: "gantt" });
         };
 
-        const checkItems = [
-          { label: "Zero curfew violations (or all waived)", failLevel: "fail",
-            desc: "Checks that all flights depart and arrive within the airport's operating window. Hard curfew violations are errors; quota and noise-managed airports show as warnings. Near-curfew buffer warnings (within 30 minutes of boundary) are included.",
-            filter: i => (i.category === "Curfew" && i.severity === "error") || i.category === "Curfew Buffer" || i.category === "Unverified Curfew" },
-          { label: "Zero schedule conflicts", failLevel: "fail",
-            desc: "Checks for overlapping flight blocks on the same aircraft and day. Two flights cannot occupy the same time slot on one tail.",
-            filter: i => i.category === "Conflict" },
-          { label: "Zero connectivity breaks", failLevel: "fail",
-            desc: "Checks that each flight's destination matches the next flight's origin for each aircraft. Ensures the aircraft can physically fly the planned route sequence.",
-            filter: i => i.category === "Connectivity" },
-          { label: "All turnarounds meet minimums", failLevel: "fail",
-            desc: "Checks that the gap between consecutive flights allows enough ground time for cargo handling (3h full turn, 2h partial, 1.5h tech stop).",
-            filter: i => i.category === "Turnaround" && i.severity === "error" },
-          { label: "All aircraft visit a maintenance base", failLevel: "fail",
-            desc: "Checks that each tail touches at least one maintenance base during the week with sufficient ground time for line checks.",
-            filter: i => i.category === "Maintenance" && i.severity === "error" },
-          { label: "Weekly rotation closes", failLevel: "warn",
-            desc: "Checks that each aircraft ends the week at the same station it starts, so the schedule can repeat week-on-week.",
-            filter: i => i.category === "Continuity" },
-          { label: "Valid block times", failLevel: "warn",
-            desc: "Checks that all flight block times are validated against the route table. Flags routes not in the table (unvalidated) and flights where block time deviates more than 5% from the operational or performance values.",
-            filter: i => i.category === "Block Mismatch" || i.category === "Unvalidated Block" },
-          { label: "Cargo flights have adequate payload", failLevel: "warn",
-            desc: "Checks that routes with cargo operations have max payload at the structural maximum. Flags routes where fuel burn constrains payload below 105,000 kg.",
-            filter: i => i.category === "Payload" },
-          { label: "No flights exceeding 17 hours", failLevel: "warn",
-            desc: "Flags any flight with a block time over 17 hours (1,020 minutes).",
-            filter: i => i.category === "Ultra-Long" },
-          { label: "Aircraft weekly utilisation under 115 block hours", failLevel: "warn",
-            desc: "Checks that no aircraft line exceeds 115 weekly block hours. Over-utilisation risks crew fatigue, reduces maintenance windows, and leaves no buffer for operational delays.",
-            filter: i => i.category === "Utilisation" },
-          { label: "No single-turn stations", failLevel: "warn",
-            desc: "Flags airports with only one turnaround (arrival) per week in the schedule. Single-turn stations stretch the operation, reduce network resilience, and limit recovery options if that flight is disrupted.",
-            filter: i => i.category === "Single-Turn Station" },
+        const checkSections = [
+          { title: "Operational Requirements", items: [
+            { label: "Zero curfew violations (or all waived)", failLevel: "fail",
+              desc: "Checks that all flights depart and arrive within the airport's operating window. Hard curfew violations are errors; quota and noise-managed airports show as warnings. Near-curfew buffer warnings (within 30 minutes of boundary) are included.",
+              filter: i => (i.category === "Curfew" && i.severity === "error") || i.category === "Curfew Buffer" || i.category === "Unverified Curfew" },
+            { label: "Zero schedule conflicts", failLevel: "fail",
+              desc: "Checks for overlapping flight blocks on the same aircraft and day. Two flights cannot occupy the same time slot on one tail.",
+              filter: i => i.category === "Conflict" },
+            { label: "Zero connectivity breaks", failLevel: "fail",
+              desc: "Checks that each flight's destination matches the next flight's origin for each aircraft. Ensures the aircraft can physically fly the planned route sequence.",
+              filter: i => i.category === "Connectivity" },
+            { label: "All turnarounds meet minimums", failLevel: "fail",
+              desc: "Checks that the gap between consecutive flights allows enough ground time for cargo handling (3h full turn, 2h partial, 1.5h tech stop).",
+              filter: i => i.category === "Turnaround" && i.severity === "error" },
+            { label: "All aircraft visit a maintenance base", failLevel: "fail",
+              desc: "Checks that each tail touches at least one maintenance base during the week with sufficient ground time for line checks.",
+              filter: i => i.category === "Maintenance" && i.severity === "error" },
+            { label: "Weekly rotation closes", failLevel: "warn",
+              desc: "Checks that each aircraft ends the week at the same station it starts, so the schedule can repeat week-on-week.",
+              filter: i => i.category === "Continuity" },
+            { label: "Valid block times", failLevel: "warn",
+              desc: "Checks that all flight block times are validated against the route table. Flags routes not in the table (unvalidated) and flights where block time deviates more than 5% from the operational or performance values.",
+              filter: i => i.category === "Block Mismatch" || i.category === "Unvalidated Block" },
+          ]},
+          { title: "Network Design Guardrails", items: [
+            { label: "Cargo flights have adequate payload", failLevel: "warn",
+              desc: "Checks that routes with cargo operations have max payload at the structural maximum. Flags routes where fuel burn constrains payload below 105,000 kg.",
+              filter: i => i.category === "Payload" },
+            { label: "No flights exceeding 17 hours", failLevel: "warn",
+              desc: "Flags any flight with a block time over 17 hours (1,020 minutes).",
+              filter: i => i.category === "Ultra-Long" },
+            { label: "Aircraft weekly utilisation under 115 block hours", failLevel: "warn",
+              desc: "Checks that no aircraft line exceeds 115 weekly block hours. Over-utilisation risks crew fatigue, reduces maintenance windows, and leaves no buffer for operational delays.",
+              filter: i => i.category === "Utilisation" },
+            { label: "No single-turn stations", failLevel: "warn",
+              desc: "Flags airports with only one turnaround (arrival) per week in the schedule. Single-turn stations stretch the operation, reduce network resilience, and limit recovery options if that flight is disrupted.",
+              filter: i => i.category === "Single-Turn Station" },
+          ]},
         ];
+        const checkItems = checkSections.flatMap(s => s.items);
 
         const otherIssues = issues.filter(i => !checkItems.some(ci => ci.filter(i)));
         const statusIcon = { pass: "✓", fail: "✗", warn: "⚠", ack: "✓" };
         const statusColor = { pass: C.success, fail: C.danger, warn: C.yellowHeavy, ack: "#2563EB" };
         const statusBg = { pass: C.successLight || "#ECFDF5", fail: C.dangerLight, warn: C.warnLight, ack: "#EFF6FF" };
 
+        let globalIdx = 0;
         return (
           <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, color: C.brownDark, marginBottom: 12 }}>Schedule Readiness Checklist</div>
-            {checkItems.map((ci, idx) => {
+            {checkSections.map((section, si) => (
+            <div key={si} style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.brownDark, marginBottom: 8, paddingBottom: 4, borderBottom: `2px solid ${C.brownLight}` }}>{section.title}</div>
+            {section.items.map((ci) => {
+              const idx = globalIdx++;
               const itemIssues = issues.filter(ci.filter);
               const ackCount = itemIssues.filter(i => ackSet.has(`${i.flightId}|${i.category}`)).length;
               const unresolvedCount = itemIssues.length - ackCount;
@@ -13334,6 +13343,8 @@ function FeasibilityTab() {
                 </div>
               );
             })}
+            </div>
+            ))}
 
             {otherIssues.length > 0 && (() => {
               const isExpanded = expandedAc === "check_other";
