@@ -512,6 +512,7 @@ const CURFEW_BUFFER_MINS       = 30;  // warn when within 30 min of curfew bound
 const RESTRICTION_LABELS = { none: "None", hard_curfew: "Hard Curfew", quota: "Night Quota", noise_managed: "Noise Managed", prior_approval: "Prior Approval", temporary: "Temporary" };
 const RESTRICTION_COLORS = { hard_curfew: { c: "#DC2626", b: "#FEE2E2" }, quota: { c: "#D97706", b: "#FEF3C7" }, noise_managed: { c: "#2563EB", b: "#EFF6FF" }, prior_approval: { c: "#7C3AED", b: "#F5F3FF" }, temporary: { c: "#EA580C", b: "#FFF7ED" } };
 const MAX_BLOCK_MINS           = 1020; // 17 hours — flag flights exceeding this
+const MAX_WEEKLY_BLOCK_HOURS   = 115;  // max weekly block hours per aircraft line
 const BLOCK_TOLERANCE_PCT      = 0.05; // 5% tolerance for block time vs table check
 const TURN_COLOR_VIOLATION = C.danger;
 const TURN_COLOR_OK        = C.brownLight;
@@ -13141,6 +13142,20 @@ function FeasibilityTab() {
       }
     });
 
+    // Weekly block-hour utilisation per aircraft
+    aircraft.filter(ac => ac.id !== POOL_AC_ID).forEach(ac => {
+      const acFlights = flights.filter(f => f.acId === ac.id);
+      const totalBlockMins = acFlights.reduce((sum, f) => sum + (f.block || 0), 0);
+      const totalBlockHrs = totalBlockMins / 60;
+      if (totalBlockHrs > MAX_WEEKLY_BLOCK_HOURS) {
+        list.push({
+          flightId: acFlights[0]?.id || ac.id, reg: ac.reg, route: "", day: 1,
+          flightNum: "", category: "Utilisation", severity: "warning",
+          detail: `${ac.reg} weekly block time ${totalBlockHrs.toFixed(1)}h exceeds ${MAX_WEEKLY_BLOCK_HOURS}h maximum (${acFlights.length} flights)`,
+        });
+      }
+    });
+
     // Sort: errors first, then warnings, then info
     list.sort((a, b) => sev(a.severity) - sev(b.severity));
     return list;
@@ -13215,6 +13230,9 @@ function FeasibilityTab() {
           { label: "No flights exceeding 17 hours", failLevel: "warn",
             desc: "Flags any flight with a block time over 17 hours (1,020 minutes).",
             filter: i => i.category === "Ultra-Long" },
+          { label: "Aircraft weekly utilisation under 115 block hours", failLevel: "warn",
+            desc: "Checks that no aircraft line exceeds 115 weekly block hours. Over-utilisation risks crew fatigue, reduces maintenance windows, and leaves no buffer for operational delays.",
+            filter: i => i.category === "Utilisation" },
         ];
 
         const otherIssues = issues.filter(i => !checkItems.some(ci => ci.filter(i)));
