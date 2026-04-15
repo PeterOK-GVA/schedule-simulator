@@ -13156,28 +13156,26 @@ function FeasibilityTab() {
       }
     });
 
-    // Single-flight stations — airports served by only one flight in the entire schedule
-    // These stretch the operation and reduce recovery options
-    const stationFlightCount = {};
+    // Single-turn stations — airports with only one turnaround (arrival) in the schedule
+    // An aircraft touching a station once = 1 arrival + 1 departure = 1 turn.
+    // We count arrivals (destinations) to measure actual turns at each station.
+    // Stations with only 1 turn stretch the operation and limit recovery options.
+    const stationArrivals = {};
     flights.filter(f => f.acId !== POOL_AC_ID && f.route).forEach(f => {
-      const [dep, arr] = (f.route || "").split("-");
-      if (dep) stationFlightCount[dep] = (stationFlightCount[dep] || 0) + 1;
-      if (arr) stationFlightCount[arr] = (stationFlightCount[arr] || 0) + 1;
+      const arr = (f.route || "").split("-")[1];
+      if (arr) {
+        if (!stationArrivals[arr]) stationArrivals[arr] = [];
+        stationArrivals[arr].push(f);
+      }
     });
-    const singleFlightStations = Object.entries(stationFlightCount).filter(([, count]) => count === 1);
-    singleFlightStations.forEach(([station]) => {
-      // Find the flight that uses this station
-      const fl = flights.find(f => {
-        if (f.acId === POOL_AC_ID || !f.route) return false;
-        const [dep, arr] = f.route.split("-");
-        return dep === station || arr === station;
-      });
-      if (fl) {
+    Object.entries(stationArrivals).forEach(([station, arrivals]) => {
+      if (arrivals.length === 1) {
+        const fl = arrivals[0];
         const ac = aircraft.find(a => a.id === fl.acId);
         list.push({
           flightId: fl.id, reg: ac?.reg || "?", route: fl.route, day: fl.day,
-          flightNum: fl.flightNum || "", category: "Single-Flight Station", severity: "warning",
-          detail: `${station} is served by only 1 flight in the schedule (${fl.flightNum || fl.route}). Single-flight stations stretch operations and limit recovery options.`,
+          flightNum: fl.flightNum || "", category: "Single-Turn Station", severity: "warning",
+          detail: `${station} has only 1 turn per week (${fl.flightNum || fl.route}). Single-turn stations stretch operations and limit recovery options.`,
         });
       }
     });
@@ -13259,9 +13257,9 @@ function FeasibilityTab() {
           { label: "Aircraft weekly utilisation under 115 block hours", failLevel: "warn",
             desc: "Checks that no aircraft line exceeds 115 weekly block hours. Over-utilisation risks crew fatigue, reduces maintenance windows, and leaves no buffer for operational delays.",
             filter: i => i.category === "Utilisation" },
-          { label: "No single-flight stations", failLevel: "warn",
-            desc: "Flags airports served by only one flight in the entire schedule. Single-flight stations stretch the operation, reduce network resilience, and limit recovery options if that flight is disrupted.",
-            filter: i => i.category === "Single-Flight Station" },
+          { label: "No single-turn stations", failLevel: "warn",
+            desc: "Flags airports with only one turnaround (arrival) per week in the schedule. Single-turn stations stretch the operation, reduce network resilience, and limit recovery options if that flight is disrupted.",
+            filter: i => i.category === "Single-Turn Station" },
         ];
 
         const otherIssues = issues.filter(i => !checkItems.some(ci => ci.filter(i)));
