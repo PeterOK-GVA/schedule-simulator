@@ -527,7 +527,6 @@ const US_CREW_BASES            = new Set(["ANC", "MIA", "LAX", "ORD"]); // local
 // during peak heat hours with heavy payload are at risk of payload offload
 const HOT_WEATHER_PEAK_START   = 600;  // 10:00 local
 const HOT_WEATHER_PEAK_END     = 960;  // 16:00 local
-const HOT_WEATHER_PAYLOAD_PCT  = 0.80; // flag if payload > 80% of structural max
 const HOT_WEATHER_REGIONS      = new Set(["M", "F"]); // MiddleEast, Africa — always hot-risk in summer
 const HOT_WEATHER_AIRPORTS     = new Set([ // specific airports in other regions with known heat issues
   "BOM", "DEL", "MAA", "BLR", "CCU", "DAC", "KHI",  // South Asia
@@ -13430,25 +13429,25 @@ function FeasibilityTab() {
         if (!dep) return;
         const ac = aircraft.find(a => a.id === f.acId);
         if (!ac) return;
+        // Only flag flights carrying cargo — these are the heavy sectors
+        const hasCargo = f.cargoOp === "upload" || f.cargoOp === "both" || f.cargoOp === "offload";
+        if (!hasCargo) return;
         // Check if departure airport is a hot-weather risk station
         const apData = AIRPORT_DATA[dep];
         const isHotRegion = apData && HOT_WEATHER_REGIONS.has(apData.r);
         const isHotAirport = HOT_WEATHER_AIRPORTS.has(dep);
         if (!isHotRegion && !isHotAirport) return;
-        // Check if payload is heavy (>80% of structural max)
-        const payloadPct = ac.maxPayload > 0 ? (f.payload || 0) / ac.maxPayload : 0;
-        if (payloadPct < HOT_WEATHER_PAYLOAD_PCT) return;
         // Check if departure is during peak heat hours (local time)
         const apLookup = lookupAirport(dep);
         const localDep = localTime(f.dep, apLookup?.utcOffset || 0);
         if (localDep < HOT_WEATHER_PEAK_START || localDep > HOT_WEATHER_PEAK_END) return;
-        // All three conditions met: hot airport + heavy payload + peak hours
+        // All conditions met: hot airport + cargo flight + peak hours
         const localTimeStr = toHHMM(localDep);
-        const pctStr = (payloadPct * 100).toFixed(0);
+        const cargoLabel = f.cargoOp === "both" ? "full cargo turn" : f.cargoOp === "upload" ? "uplift" : "offload";
         list.push({
           flightId: f.id, reg: ac.reg, route: f.route, day: f.day,
           flightNum: f.flightNum || "", category: "Hot Weather Risk", severity: "warning",
-          detail: `${dep} departure at ${localTimeStr} local (peak heat 10:00–16:00) with ${pctStr}% payload (${fmtKg(f.payload)}). High temperatures may reduce takeoff performance — consider scheduling before 10:00 or after 16:00 local to reduce offload risk.`,
+          detail: `${dep} departure at ${localTimeStr} local (peak heat 10:00–16:00) with cargo ${cargoLabel}. High temperatures may reduce takeoff performance — consider scheduling before 10:00 or after 16:00 local to reduce offload risk.`,
         });
       });
     }
@@ -13558,7 +13557,7 @@ function FeasibilityTab() {
               desc: `Checks that every active aircraft has at least one revenue flight (F/H) in the week where a same-AOC peer is on ground at the origin station with ≥${SWAP_MIN_OVERLAP_MINS / 60}h overlap before departure and remains through the flight's arrival. Only stations where cargo is offloaded qualify (tech stops excluded). A single viable swap point per tail per week is enough to preserve operational resilience — the target is ≥1 per aircraft, not per-flight coverage. Single-aircraft AOCs are surfaced as informational (swap coverage not applicable).`,
               filter: i => i.category === "Swap Coverage" },
             { label: "Hot weather departure scheduling", failLevel: "warn",
-              desc: "Summer only — flags revenue flights departing from hot-weather airports (Middle East, Africa, South Asia, tropical SE Asia, southern US, southern China) during peak heat hours (10:00–16:00 local) with payload above 80% of structural max. High temperatures reduce takeoff performance and may force cargo offload. Recommend scheduling heavy departures before 10:00 or after 16:00 local time.",
+              desc: "Summer only — flags revenue flights with cargo (uplift/offload/both) departing from hot-weather airports (Middle East, Africa, South Asia, tropical SE Asia, southern US, southern China) during peak heat hours (10:00–16:00 local). High temperatures reduce takeoff performance and may force cargo offload. Recommend scheduling cargo departures from hot airports before 10:00 or after 16:00 local time. Ferries and flights without cargo movement are excluded.",
               filter: i => i.category === "Hot Weather Risk" },
             { label: "US rotation crew base coverage", failLevel: "warn",
               desc: `Checks that all 5Y aircraft operating to/from US stations touch a local crew base (${[...US_CREW_BASES].join(", ")}) in their weekly rotation. An aircraft in the US that doesn't visit a crew base cannot change crew, risking flight time limitation violations.`,
