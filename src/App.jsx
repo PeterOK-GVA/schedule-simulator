@@ -2785,7 +2785,7 @@ const SEED_BLOCK_TABLE = [
   { id: "bt57", route: "ANC-NRT", W: 465, S: 450, payloadW: 104800, payloadS: 104800, aoc: "5Y" },
   { id: "bt58", route: "ANC-ORD", W: 350, S: 355, payloadW: 104800, payloadS: 104800, aoc: "5Y" },
   { id: "bt59", route: "ANC-OSL", W: 635, S: 635, payloadW: 101800, payloadS: 101800, aoc: "5Y" },
-  { id: "bt60", route: "ANC-PEN", W: 810, S: 810, payloadW: 78900, payloadS: 78900, aoc: "5Y" },
+  { id: "bt60", route: "ANC-PEN", W: 810, S: 0, payloadW: 78900, payloadS: 0, aoc: "5Y" },
   { id: "bt61", route: "ANC-PHX", W: 320, S: 325, payloadW: 103800, payloadS: 103600, aoc: "5Y" },
   { id: "bt62", route: "ANC-PVG", W: 595, S: 565, payloadW: 102700, payloadS: 103900, aoc: "5Y" },
   { id: "bt63", route: "ANC-RFD", W: 335, S: 340, payloadW: 104800, payloadS: 104800, aoc: "5Y" },
@@ -4489,8 +4489,12 @@ function resolveBlockEntry(blockTable, route, aoc, flightNum) {
  */
 function extractBlock(entry, season) {
   if (!entry) return null;
-  if (season === "W") return (entry.opW && entry.opW > 0) ? entry.opW : entry.W;
-  return (entry.opS && entry.opS > 0) ? entry.opS : entry.S;
+  if (season === "W") {
+    if (entry.opW && entry.opW > 0) return entry.opW;
+    return (entry.W && entry.W > 0) ? entry.W : null; // 0 = no data for this season → fall back to estimate
+  }
+  if (entry.opS && entry.opS > 0) return entry.opS;
+  return (entry.S && entry.S > 0) ? entry.S : null;
 }
 
 /**
@@ -4498,7 +4502,8 @@ function extractBlock(entry, season) {
  */
 function extractPayload(entry, season) {
   if (!entry) return null;
-  return season === "W" ? (entry.payloadW ?? null) : (entry.payloadS ?? null);
+  const v = season === "W" ? entry.payloadW : entry.payloadS;
+  return (v != null && v > 0) ? v : null; // 0 = no data for this season
 }
 
 /**
@@ -4509,9 +4514,12 @@ function resolveBlockTime(blockTable, route, aoc, season, flightNum) {
   const entry = resolveBlockEntry(blockTable, route, aoc, flightNum);
   if (entry) {
     const block = extractBlock(entry, season);
-    const payload = extractPayload(entry, season);
-    const fuelKg = block ? estimateFuelBurn(block, aoc, false) : 0;
-    return block ? { block, payload: payload || 0, fuelKg, source: "table", entry } : null;
+    if (block) {
+      const payload = extractPayload(entry, season);
+      const fuelKg = estimateFuelBurn(block, aoc, false);
+      return { block, payload: payload || 0, fuelKg, source: "table", entry };
+    }
+    // Entry exists but has no data for this season (e.g., S: 0) → fall through to estimate
   }
   // Estimate fallback (pass aoc for AOC-specific fuel/payload curves)
   const [dep, arr] = (route || "").toUpperCase().split("-");
@@ -10819,19 +10827,17 @@ function RouteCalculatorTab() {
     return pts;
   }, [blockTable, season]);
 
-  // Check if route exists in route table
+  // Check if route exists in route table — 0 means "no data for this season" → fall through to estimate
   const tableMatch = useMemo(() => {
     if (depCode.length < 3 || arrCode.length < 3 || depCode === arrCode) return null;
     const route = `${depCode}-${arrCode}`;
-    // Find matches (may have multiple AOC entries)
     const matches = blockTable.filter(r => r.route === route);
     if (matches.length === 0) return null;
-    // If calcAoc is set, prefer that AOC match
     const aocMatch = matches.find(r => r.aoc === calcAoc);
     const match = aocMatch || matches[0];
-    const block = season === "W" ? match.W : match.S;
-    const payload = season === "W" ? match.payloadW : match.payloadS;
-    // Also get GCD for display
+    const block = extractBlock(match, season);
+    if (!block) return null; // no data for this season → fall through to estimate
+    const payload = extractPayload(match, season);
     const dep = AIRPORT_DATA[depCode], arr = AIRPORT_DATA[arrCode];
     const dist = dep && arr ? Math.round(haversineGCD(dep.lat, dep.lon, arr.lat, arr.lon)) : null;
     const dir = dep && arr ? detectDirection(dep.lat, dep.lon, arr.lat, arr.lon) : null;
