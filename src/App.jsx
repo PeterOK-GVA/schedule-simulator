@@ -513,11 +513,16 @@ const RESTRICTION_LABELS = { none: "None", hard_curfew: "Hard Curfew", quota: "N
 const RESTRICTION_COLORS = { hard_curfew: { c: "#DC2626", b: "#FEE2E2" }, quota: { c: "#D97706", b: "#FEF3C7" }, noise_managed: { c: "#2563EB", b: "#EFF6FF" }, prior_approval: { c: "#7C3AED", b: "#F5F3FF" }, temporary: { c: "#EA580C", b: "#FFF7ED" } };
 const MAX_BLOCK_MINS           = 1020; // 17 hours — flag flights exceeding this
 const MAX_WEEKLY_BLOCK_HOURS   = 115;  // max weekly block hours per aircraft line
-const MIN_5Y_WEEKLY_BLOCK_HRS  = 345;  // minimum 5Y fleet weekly block hours (4500h/quarter ÷ 13 weeks)
+const MONTHLY_TARGETS = {
+  "5Y": { min: 460, max: 480, label: "Atlas Air (5Y)" },
+  CP:   { min: 345, max: 360, label: "MSC Air (CP)" },
+};
 const MAX_FERRY_RATIO          = 0.50; // ferry block hours must not exceed 50% of total (revenue ≥ ferry)
 const BLOCK_TOLERANCE_PCT      = 0.05; // 5% tolerance for block time vs table check
 const SWAP_MIN_OVERLAP_MINS    = 180;  // 3h min ground overlap to qualify as swap candidate
-const MIN_BLOCK_HOURS_PER_CYCLE = 8.0; // network density KPI — each tail's block hours ÷ cycles (flights)
+const MIN_BLOCK_HOURS_PER_CYCLE = 10.0; // network density KPI — each tail's block hours ÷ cycles (flights)
+const MIN_STATION_TURNS        = 3;    // minimum weekly turnarounds per station
+const US_CREW_BASES            = new Set(["ANC", "MIA", "LAX", "ORD"]); // local crew bases for US rotation
 const TURN_COLOR_VIOLATION = C.danger;
 const TURN_COLOR_OK        = C.brownLight;
 
@@ -13168,10 +13173,9 @@ function FeasibilityTab() {
       }
     });
 
-    // Single-turn stations — airports with only one turnaround (arrival) in the schedule
-    // An aircraft touching a station once = 1 arrival + 1 departure = 1 turn.
-    // We count arrivals (destinations) to measure actual turns at each station.
-    // Stations with only 1 turn stretch the operation and limit recovery options.
+    // Low-frequency stations — airports below the minimum turns per week threshold
+    // We count arrivals (destinations) to measure actual turnarounds per station.
+    // Stations with fewer than MIN_STATION_TURNS turns per week stretch the operation.
     const stationArrivals = {};
     flights.filter(f => f.acId !== POOL_AC_ID && f.route).forEach(f => {
       const arr = (f.route || "").split("-")[1];
@@ -13181,32 +13185,34 @@ function FeasibilityTab() {
       }
     });
     Object.entries(stationArrivals).forEach(([station, arrivals]) => {
-      if (arrivals.length === 1) {
+      if (arrivals.length < MIN_STATION_TURNS) {
         const fl = arrivals[0];
         const ac = aircraft.find(a => a.id === fl.acId);
         list.push({
           flightId: fl.id, reg: ac?.reg || "?", route: fl.route, day: fl.day,
-          flightNum: fl.flightNum || "", category: "Single-Turn Station", severity: "warning",
-          detail: `${station} has only 1 turn per week (${fl.flightNum || fl.route}). Single-turn stations stretch operations and limit recovery options.`,
+          flightNum: fl.flightNum || "", category: "Low-Frequency Station", severity: "warning",
+          detail: `${station} has only ${arrivals.length} turn${arrivals.length === 1 ? "" : "s"} per week (minimum ${MIN_STATION_TURNS}). Low-frequency stations stretch operations and limit recovery options.`,
         });
       }
     });
 
-    // 5Y fleet minimum weekly block hours (ACMI guarantee)
-    const fleet5Y = aircraft.filter(ac => ac.id !== POOL_AC_ID && deriveAoc(ac.reg).code === "5Y");
-    if (fleet5Y.length > 0) {
-      const total5YBlockMins = flights
-        .filter(f => fleet5Y.some(ac => ac.id === f.acId))
+    // Monthly block hour targets per AOC (extrapolated from weekly schedule × ~4.3 weeks/month)
+    Object.entries(MONTHLY_TARGETS).forEach(([aocCode, target]) => {
+      const aocAircraft = aircraft.filter(ac => ac.id !== POOL_AC_ID && deriveAoc(ac.reg).code === aocCode);
+      if (aocAircraft.length === 0) return;
+      const totalBlockMins = flights
+        .filter(f => aocAircraft.some(ac => ac.id === f.acId))
         .reduce((sum, f) => sum + (f.block || 0), 0);
-      const total5YBlockHrs = total5YBlockMins / 60;
-      if (total5YBlockHrs < MIN_5Y_WEEKLY_BLOCK_HRS) {
+      const weeklyHrs = totalBlockMins / 60;
+      const monthlyEstimate = weeklyHrs * (52 / 12); // weekly × 4.33 weeks/month
+      if (monthlyEstimate < target.min) {
         list.push({
-          flightId: fleet5Y[0]?.id || "5y_fleet", reg: "5Y Fleet", route: "", day: 1,
+          flightId: `aoc_${aocCode}_target`, reg: `${target.label}`, route: "", day: 1,
           flightNum: "", category: "Fleet Utilisation", severity: "warning",
-          detail: `5Y fleet total ${total5YBlockHrs.toFixed(1)}h/week is below ${MIN_5Y_WEEKLY_BLOCK_HRS}h minimum (${MIN_5Y_WEEKLY_BLOCK_HRS} × 13 weeks = ${MIN_5Y_WEEKLY_BLOCK_HRS * 13}h/quarter ACMI guarantee of 4,500h)`,
+          detail: `${target.label} monthly estimate ${monthlyEstimate.toFixed(0)}h (${weeklyHrs.toFixed(1)}h/week × 4.3) is below ${target.min}h target (target range: ${target.min}–${target.max}h/month)`,
         });
       }
-    }
+    });
 
     // Ferry ratio per AOC — revenue block hours should be ≥50% of total flying across the AOC
     // (aggregated across all aircraft in the AOC, not per-aircraft — a light ferry week on one
@@ -13373,6 +13379,35 @@ function FeasibilityTab() {
       });
     }
 
+    // US rotation crew base coverage — 5Y aircraft should touch a crew base (ANC, MIA, LAX, ORD)
+    // in every rotation cycle through the US. An aircraft flying to/from the US that doesn't
+    // touch a crew base cannot change crew, risking FTL violations.
+    aircraft.filter(ac => ac.id !== POOL_AC_ID && deriveAoc(ac.reg).code === "5Y").forEach(ac => {
+      const acFlts = flights.filter(f => f.acId === ac.id);
+      // Find all stations this aircraft visits
+      const stations = new Set();
+      acFlts.forEach(f => {
+        const [dep, arr] = (f.route || "").split("-");
+        if (dep) stations.add(dep);
+        if (arr) stations.add(arr);
+      });
+      // Check if any US stations are touched
+      const usStations = [...stations].filter(s => {
+        const ap = lookupAirport(s);
+        return ap && (ap.utcOffset <= -4 && ap.utcOffset >= -10); // rough US timezone range
+      });
+      if (usStations.length === 0) return; // no US flying for this tail
+      // Check if any crew base is touched
+      const touchesCrewBase = usStations.some(s => US_CREW_BASES.has(s));
+      if (!touchesCrewBase) {
+        list.push({
+          flightId: acFlts[0]?.id || ac.id, reg: ac.reg, route: "", day: 1,
+          flightNum: "", category: "Crew Base Coverage", severity: "warning",
+          detail: `${ac.reg} operates to/from US stations (${usStations.join(", ")}) but does not touch a crew base (${[...US_CREW_BASES].join(", ")}). Crew changeover not possible — risk of FTL violations.`,
+        });
+      }
+    });
+
     // Sort: errors first, then warnings, then info
     list.sort((a, b) => sev(a.severity) - sev(b.severity));
     return list;
@@ -13422,8 +13457,8 @@ function FeasibilityTab() {
         const checkSections = [
           { title: "Operational Requirements", items: [
             { label: "Zero curfew violations (or all waived)", failLevel: "fail",
-              desc: "Checks that all flights depart and arrive within the airport's operating window. Hard curfew violations are errors; quota and noise-managed airports show as warnings. Near-curfew buffer warnings (within 30 minutes of boundary) are included.",
-              filter: i => (i.category === "Curfew" && i.severity === "error") || i.category === "Curfew Buffer" || i.category === "Unverified Curfew" },
+              desc: "Checks that all flights depart and arrive within hard-curfew airport operating windows. Only hard curfew violations (airports where flights are prohibited) are flagged here. Quota-managed and noise-managed airports appear under Other Findings as advisory warnings.",
+              filter: i => i.category === "Curfew" && i.severity === "error" },
             { label: "Zero schedule conflicts", failLevel: "fail",
               desc: "Checks for overlapping flight blocks on the same aircraft and day. Two flights cannot occupy the same time slot on one tail.",
               filter: i => i.category === "Conflict" },
@@ -13431,11 +13466,11 @@ function FeasibilityTab() {
               desc: "Checks that each flight's destination matches the next flight's origin for each aircraft. Ensures the aircraft can physically fly the planned route sequence.",
               filter: i => i.category === "Connectivity" },
             { label: "All turnarounds meet minimums", failLevel: "fail",
-              desc: "Checks that the gap between consecutive flights allows enough ground time for cargo handling (3h full turn, 2h partial, 1.5h tech stop).",
+              desc: "Checks that the gap between consecutive flights allows enough ground time for cargo handling (3h full turn, 2h half turn, 1.5h tech stop).",
               filter: i => i.category === "Turnaround" && i.severity === "error" },
             { label: "All aircraft visit a maintenance base", failLevel: "fail",
-              desc: "Checks that each tail touches at least one maintenance base during the week with sufficient ground time for line checks.",
-              filter: i => i.category === "Maintenance" && i.severity === "error" },
+              desc: "Checks that each tail touches at least one maintenance base during the week with sufficient ground time for line checks. Also flags tails that go 5+ consecutive days without a base visit or lack a continuous 4h slot.",
+              filter: i => i.category === "Maintenance" },
             { label: "Weekly rotation closes", failLevel: "warn",
               desc: "Checks that each aircraft ends the week at the same station it starts, so the schedule can repeat week-on-week.",
               filter: i => i.category === "Continuity" },
@@ -13456,14 +13491,14 @@ function FeasibilityTab() {
             { label: "No flights exceeding 17 hours", failLevel: "warn",
               desc: "Flags any flight with a block time over 17 hours (1,020 minutes).",
               filter: i => i.category === "Ultra-Long" },
-            { label: "Aircraft weekly utilisation under 115 block hours", failLevel: "warn",
-              desc: "Checks that no aircraft line exceeds 115 weekly block hours. Over-utilisation risks crew fatigue, reduces maintenance windows, and leaves no buffer for operational delays.",
+            { label: "Tail over-utilisation warning (max 115 block hours/week)", failLevel: "warn",
+              desc: "Checks that no individual aircraft exceeds 115 weekly block hours. Over-utilised tails risk crew fatigue, reduce available maintenance windows, and leave no buffer for operational delays or ad-hoc charters.",
               filter: i => i.category === "Utilisation" },
-            { label: "No single-turn stations", failLevel: "warn",
-              desc: "Flags airports with only one turnaround (arrival) per week in the schedule. Single-turn stations stretch the operation, reduce network resilience, and limit recovery options if that flight is disrupted.",
-              filter: i => i.category === "Single-Turn Station" },
-            { label: "5Y fleet minimum block hours (ACMI guarantee)", failLevel: "warn",
-              desc: `The 5Y fleet weekly block hours should not fall below ${MIN_5Y_WEEKLY_BLOCK_HRS}h. At 13 weeks per quarter this equates to the minimum ACMI block hour guarantee of ${MIN_5Y_WEEKLY_BLOCK_HRS * 13}h per quarter.`,
+            { label: `Station frequency (min ${MIN_STATION_TURNS} turns/week)`, failLevel: "warn",
+              desc: `Flags airports with fewer than ${MIN_STATION_TURNS} turnarounds (arrivals) per week. Low-frequency stations stretch the operation, reduce network resilience, and limit recovery options if flights are disrupted.`,
+              filter: i => i.category === "Low-Frequency Station" },
+            { label: "AOC monthly block hour targets", failLevel: "warn",
+              desc: "Checks that each AOC fleet's weekly block hours extrapolate to within the monthly target range. 5Y (Atlas Air): 460–480h/month. CP (MSC Air): 345–360h/month. Based on weekly schedule × 4.3 weeks/month.",
               filter: i => i.category === "Fleet Utilisation" },
             { label: "Ferry ratio per AOC (revenue ≥ 50%)", failLevel: "warn",
               desc: "Revenue block hours should be at least 50% of total flying aggregated across each AOC (all tails combined). A ferry ratio exceeding 50% at the AOC level indicates inefficient positioning and erodes the commercial viability of the line. Evaluated per AOC rather than per aircraft so a light week on one tail can offset a heavy ferry week on another within the same AOC.",
@@ -13477,6 +13512,9 @@ function FeasibilityTab() {
             { label: "Each aircraft has ≥1 swap point per week", failLevel: "warn",
               desc: `Checks that every active aircraft has at least one revenue flight (F/H) in the week where a same-AOC peer is on ground at the origin station with ≥${SWAP_MIN_OVERLAP_MINS / 60}h overlap before departure and remains through the flight's arrival. Only stations where cargo is offloaded qualify (tech stops excluded). A single viable swap point per tail per week is enough to preserve operational resilience — the target is ≥1 per aircraft, not per-flight coverage. Single-aircraft AOCs are surfaced as informational (swap coverage not applicable).`,
               filter: i => i.category === "Swap Coverage" },
+            { label: "US rotation crew base coverage", failLevel: "warn",
+              desc: `Checks that all 5Y aircraft operating to/from US stations touch a local crew base (${[...US_CREW_BASES].join(", ")}) in their weekly rotation. An aircraft in the US that doesn't visit a crew base cannot change crew, risking flight time limitation violations.`,
+              filter: i => i.category === "Crew Base Coverage" },
           ]},
         ];
         const checkItems = checkSections.flatMap(s => s.items);
