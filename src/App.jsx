@@ -8507,12 +8507,31 @@ function GanttTab() {
                     const midY = ry + ROW_HEIGHT / 2;
                     const showLabel = gapPx > 32;
                     const labelW = Math.min(56, Math.max(34, gapPx - 4));
+                    const pushHint = t.departingKind === "mx" ? "push MX" : "push departure";
                     const titleTxt = isV
-                      ? `mx buffer: ${fmtTurn(t.gapMins)} vs ${fmtTurn(t.minTurn)} min`
+                      ? `mx buffer: ${fmtTurn(t.gapMins)} vs ${fmtTurn(t.minTurn)} min — double-click to ${pushHint}`
                       : `mx buffer: ${fmtTurn(t.gapMins)}`;
 
+                    const onPushTurn = isV ? (e) => {
+                      e.stopPropagation();
+                      // Target the departing side: flight arrival → MX start means push MX;
+                      // MX end → next flight departure means push the flight.
+                      let newStartWm = Math.ceil((t.arrWMins + t.minTurn) / SNAP) * SNAP;
+                      if (newStartWm >= WEEK_MINS) newStartWm -= WEEK_MINS;
+                      const newDay = Math.floor(newStartWm / DAY_MINS) + 1;
+                      const newStart = newStartWm % DAY_MINS;
+                      if (t.departingKind === "mx" && t.departingMx) {
+                        dispatch({ type: A.UPDATE_MX_BLOCK, block: { id: t.departingMx.id, day: newDay, start: newStart } });
+                      } else if (t.departingKind === "flight" && t.departingFlight) {
+                        dispatch({ type: A.UPDATE_FLIGHT, flight: { id: t.departingFlight.id, day: newDay, dep: newStart } });
+                      }
+                    } : undefined;
+
                     return (
-                      <g key={`mxt-${i}`} style={{ cursor: "default" }}>
+                      <g key={`mxt-${i}`}
+                        style={{ cursor: isV ? "pointer" : "default" }}
+                        onDoubleClick={onPushTurn}
+                      >
                         <title>{titleTxt}</title>
                         <rect x={x1} y={midY - 10} width={x2 - x1} height={20}
                           fill={col} opacity={isV ? "0.12" : "0.08"} rx={2} />
