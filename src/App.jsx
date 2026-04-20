@@ -508,6 +508,7 @@ const MAINT_BASES = {
 const MAINT_MIN_WEEKLY_HOURS   = 15;  // minimum ground hours at maint bases per tail per week
 const MAINT_MIN_SLOT_HOURS     = 4;   // minimum single continuous slot for a line check
 const MAINT_MAX_DAYS_NO_BASE   = 5;   // warn if aircraft doesn't touch a maint base for this many days
+const MX_GAP_MINS              = 120; // 2 h minimum buffer between a flight and an MX block (double-click to align)
 const CURFEW_BUFFER_MINS       = 30;  // warn when within 30 min of curfew boundary
 const RESTRICTION_LABELS = { none: "None", hard_curfew: "Hard Curfew", quota: "Night Quota", noise_managed: "Noise Managed", prior_approval: "Prior Approval", temporary: "Temporary" };
 const RESTRICTION_COLORS = { hard_curfew: { c: "#DC2626", b: "#FEE2E2" }, quota: { c: "#D97706", b: "#FEF3C7" }, noise_managed: { c: "#2563EB", b: "#EFF6FF" }, prior_approval: { c: "#7C3AED", b: "#F5F3FF" }, temporary: { c: "#EA580C", b: "#FFF7ED" } };
@@ -4564,9 +4565,12 @@ const A = {
   ASSIGN_ROTATION:   "ASSIGN_ROTATION",   // assign flight(s) to a rotation
 
   // Maintenance blocks (ground time, not positioning flights)
-  ADD_MX_BLOCK:      "ADD_MX_BLOCK",
-  UPDATE_MX_BLOCK:   "UPDATE_MX_BLOCK",
-  DELETE_MX_BLOCK:   "DELETE_MX_BLOCK",
+  ADD_MX_BLOCK:       "ADD_MX_BLOCK",
+  UPDATE_MX_BLOCK:    "UPDATE_MX_BLOCK",
+  DELETE_MX_BLOCK:    "DELETE_MX_BLOCK",
+  BULK_MX_RETIME:     "BULK_MX_RETIME",
+  BULK_MX_REASSIGN:   "BULK_MX_REASSIGN",
+  BULK_MX_DELETE:     "BULK_MX_DELETE",
 
   // Aircraft
   SET_AIRCRAFT:      "SET_AIRCRAFT",
@@ -4810,6 +4814,38 @@ function scheduleReducer(state, action) {
       return { ...state, mxBlocks: (state.mxBlocks || []).map(b => b.id === action.block.id ? { ...b, ...action.block } : b) };
     case A.DELETE_MX_BLOCK:
       return { ...state, mxBlocks: (state.mxBlocks || []).filter(b => b.id !== action.id) };
+
+    case A.BULK_MX_RETIME: {
+      const { ids, shiftMins } = action;
+      const idSet = ids instanceof Set ? ids : new Set(ids);
+      return {
+        ...state,
+        mxBlocks: (state.mxBlocks || []).map(mx => {
+          if (!idSet.has(mx.id)) return mx;
+          let newStart = mx.start + shiftMins;
+          let newDay = mx.day;
+          while (newStart < 0) { newStart += DAY_MINS; newDay = newDay > 1 ? newDay - 1 : 7; }
+          while (newStart >= DAY_MINS) { newStart -= DAY_MINS; newDay = newDay < 7 ? newDay + 1 : 1; }
+          return { ...mx, start: newStart, day: newDay };
+        }),
+      };
+    }
+    case A.BULK_MX_REASSIGN: {
+      const { ids, toAcId } = action;
+      const idSet = ids instanceof Set ? ids : new Set(ids);
+      return {
+        ...state,
+        mxBlocks: (state.mxBlocks || []).map(mx => idSet.has(mx.id) ? { ...mx, acId: toAcId } : mx),
+      };
+    }
+    case A.BULK_MX_DELETE: {
+      const { ids } = action;
+      const idSet = ids instanceof Set ? ids : new Set(ids);
+      return {
+        ...state,
+        mxBlocks: (state.mxBlocks || []).filter(mx => !idSet.has(mx.id)),
+      };
+    }
 
     // ── Aircraft ──────────────────────────────────────────────────────
     case A.SET_AIRCRAFT:
@@ -5718,7 +5754,7 @@ function useVersionRepo() {
  * triggering unnecessary re-renders.
  */
 function useScheduleValidation() {
-  const { flights, aircraft, lookupBlock, lookupBlockEntry, lookupAirport, flightAoc, activeSeason } = useSchedule();
+  const { flights, aircraft, lookupBlock, lookupBlockEntry, lookupAirport, flightAoc, activeSeason, mxBlocks } = useSchedule();
 
   // ── Core checks ────────────────────────────────────────────────────
 
@@ -5839,6 +5875,60 @@ function useScheduleValidation() {
     }
     return false;
   }, [flights]);
+
+  /**
+   * Per-block maintenance issues. Returns { errors, warnings } each containing short messages.
+   * - error: MX block's time window overlaps a flight or another MX block on the same tail
+   * - warning: aircraft isn't at a maintenance base at the start of the block
+   * - warning: duration too short for a line check (< MAINT_MIN_SLOT_HOURS)
+   */
+  const mxIssues = useCallback((mx) => {
+    const errors = [], warnings = [];
+    const mxStartWm = weekMins(mx.day, mx.start);
+    const mxEndWm = mxStartWm + mx.duration;
+    const tailFlights = flights.filter(f => f.acId === mx.acId);
+    const tailMx = (mxBlocks || []).filter(b => b.acId === mx.acId && b.id !== mx.id);
+
+    // Overlap with a flight on the same tail
+    const overlapsFlight = tailFlights.some(f => {
+      const fStart = weekMins(f.day, f.dep);
+      const fEnd = fStart + f.block;
+      return fStart < mxEndWm && fEnd > mxStartWm;
+    });
+    if (overlapsFlight) errors.push("Overlaps a flight on this tail");
+
+    // Overlap with another MX block on the same tail
+    const overlapsMx = tailMx.some(b => {
+      const bStart = weekMins(b.day, b.start);
+      const bEnd = bStart + b.duration;
+      return bStart < mxEndWm && bEnd > mxStartWm;
+    });
+    if (overlapsMx) errors.push("Overlaps another maintenance block");
+
+    // Duration shorter than a line-check slot
+    if (mx.duration < MAINT_MIN_SLOT_HOURS * 60) {
+      warnings.push(`Shorter than ${MAINT_MIN_SLOT_HOURS}h line-check minimum`);
+    }
+
+    // Aircraft position at start of block — latest arrival before mxStartWm
+    if (tailFlights.length > 0) {
+      let prev = null, prevArr = -1;
+      for (const f of tailFlights) {
+        const arrWm = weekMins(f.day, f.dep) + f.block;
+        if (arrWm <= mxStartWm && arrWm > prevArr) { prev = f; prevArr = arrWm; }
+      }
+      if (!prev) {
+        const sorted = [...tailFlights].sort((a, b) => (weekMins(a.day, a.dep) + a.block) - (weekMins(b.day, b.dep) + b.block));
+        prev = sorted[sorted.length - 1];
+      }
+      const station = prev ? (prev.route || "").split("-")[1] : null;
+      if (station && !MAINT_BASES[station]) {
+        warnings.push(`Aircraft at ${station} — not a maintenance base`);
+      }
+    }
+
+    return { errors, warnings };
+  }, [flights, mxBlocks]);
 
   /**
    * Does the flight's block time differ from ALL known block-time values
@@ -5969,6 +6059,75 @@ function useScheduleValidation() {
     return gaps;
   }, [flights]);
 
+  /**
+   * Compute turntime gaps between flights and maintenance blocks on one
+   * aircraft. For each MX block we emit up to two gaps: the preceding
+   * flight's arrival → MX start, and MX end → the next flight's departure.
+   * Minimum turn is MX_GAP_MINS (2h) — gaps below that are violations.
+   *
+   * Returned gap shape mirrors getAllTurnarounds so rendering is uniform.
+   * Sides are tagged with `arrivingKind` / `departingKind` = "flight"|"mx".
+   */
+  const getMxTurnarounds = useCallback((acId) => {
+    const tailFlights = flights.filter(f => f.acId === acId);
+    const tailMx = (mxBlocks || []).filter(m => m.acId === acId);
+    if (tailMx.length === 0 || tailFlights.length === 0) return [];
+
+    const gaps = [];
+    tailMx.forEach(mx => {
+      const mxStartWm = weekMins(mx.day, mx.start);
+      const mxEndWm = mxStartWm + mx.duration;
+
+      // Preceding flight → MX start
+      let preceding = null, precArr = -Infinity;
+      for (const f of tailFlights) {
+        const arrWm = weekMins(f.day, f.dep) + f.block;
+        if (arrWm <= mxStartWm && arrWm > precArr) { preceding = f; precArr = arrWm; }
+      }
+      if (preceding) {
+        const gap = mxStartWm - precArr;
+        gaps.push({
+          gapMins:       gap,
+          arrWMins:      precArr,
+          depWMins:      mxStartWm,
+          minTurn:       MX_GAP_MINS,
+          turnLabel:     gap < 0 ? "overlap" : "mx buffer",
+          isViolation:   gap < MX_GAP_MINS,
+          isOverlap:     gap < 0,
+          arrivingKind:  "flight",
+          departingKind: "mx",
+          arrivingFlight: preceding,
+          departingMx:   mx,
+        });
+      }
+
+      // MX end → next flight departure
+      let following = null, folDep = Infinity;
+      for (const f of tailFlights) {
+        const depWm = weekMins(f.day, f.dep);
+        if (depWm >= mxEndWm && depWm < folDep) { following = f; folDep = depWm; }
+      }
+      if (following) {
+        const gap = folDep - mxEndWm;
+        gaps.push({
+          gapMins:       gap,
+          arrWMins:      mxEndWm,
+          depWMins:      folDep,
+          minTurn:       MX_GAP_MINS,
+          turnLabel:     gap < 0 ? "overlap" : "mx buffer",
+          isViolation:   gap < MX_GAP_MINS,
+          isOverlap:     gap < 0,
+          arrivingKind:  "mx",
+          departingKind: "flight",
+          arrivingMx:    mx,
+          departingFlight: following,
+        });
+      }
+    });
+
+    return gaps;
+  }, [flights, mxBlocks]);
+
   // ── Comprehensive flight validation ────────────────────────────────
 
   /**
@@ -6072,10 +6231,12 @@ function useScheduleValidation() {
     hasConflict,
     hasConnectivityIssue,
     hasBlockMismatch,
+    mxIssues,
 
     // Turnarounds
     getTurnaroundsForDay,
     getAllTurnarounds,
+    getMxTurnarounds,
 
     // Comprehensive validation
     validateFlight,
@@ -6937,7 +7098,7 @@ function GanttTab() {
 
   const {
     curfewViolations, hasConflict, hasConnectivityIssue,
-    hasBlockMismatch, getAllTurnarounds, validateFlight,
+    hasBlockMismatch, getAllTurnarounds, validateFlight, mxIssues, getMxTurnarounds,
   } = useScheduleValidation();
 
   // ── Zoom ──────────────────────────────────────────────────────────
@@ -6958,14 +7119,24 @@ function GanttTab() {
 
   // ── Local UI state ──────────────────────────────────────────────────
   const [selected, setSelected]         = useState(new Set());
+  const [selectedMx, setSelectedMx]     = useState(new Set());
   const toggleSelect = useCallback((id, e) => {
     if (e?.shiftKey || e?.metaKey || e?.ctrlKey) {
       setSelected(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
     } else {
       setSelected(prev => prev.size === 1 && prev.has(id) ? new Set() : new Set([id]));
+      setSelectedMx(new Set());
     }
   }, []);
-  const clearSelection = useCallback(() => setSelected(new Set()), []);
+  const toggleSelectMx = useCallback((id, e) => {
+    if (e?.shiftKey || e?.metaKey || e?.ctrlKey) {
+      setSelectedMx(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
+    } else {
+      setSelectedMx(prev => prev.size === 1 && prev.has(id) ? new Set() : new Set([id]));
+      setSelected(new Set());
+    }
+  }, []);
+  const clearSelection = useCallback(() => { setSelected(new Set()); setSelectedMx(new Set()); }, []);
   const [bulkBar, setBulkBar] = useState(null); // { action, value }
   const [editModal, setEditModal]       = useState(null);
   const [tooltip, setTooltip]           = useState(null);
@@ -6991,7 +7162,7 @@ function GanttTab() {
     setGanttSearchRaw(v);
   }, [ui]);
 
-  // Build set of flight IDs matching the Gantt search — includes connected-movement logic
+  // Build set of flight + MX IDs matching the Gantt search — includes connected-movement logic
   const ganttSearchMatches = useMemo(() => {
     if (!ganttSearch) return null;
     const q = ganttSearch.toUpperCase();
@@ -7007,6 +7178,17 @@ function GanttTab() {
           (f.customer || "").toUpperCase().includes(q) ||
           (acRegMap[f.acId] || "").includes(q)) {
         matched.add(f.id);
+      }
+    }
+
+    // Maintenance blocks: match label, aircraft reg, or the generic words MX / MAINT / MAINTENANCE
+    const mxKeyword = q === "MX" || q === "MAINT" || q === "MAINTENANCE";
+    for (const mx of (mxBlocks || [])) {
+      const lbl = (mx.label || "MX").toUpperCase();
+      if (mxKeyword ||
+          lbl.includes(q) ||
+          (acRegMap[mx.acId] || "").includes(q)) {
+        matched.add(mx.id);
       }
     }
 
@@ -7036,7 +7218,7 @@ function GanttTab() {
     }
 
     return matched;
-  }, [ganttSearch, flights, aircraft]);
+  }, [ganttSearch, flights, aircraft, mxBlocks]);
 
   const [collapsedAoc, setCollapsedAocRaw] = useState(() => ui?.ganttCollapsedAocRef?.current ?? new Set());
   const setCollapsedAoc = useCallback((v) => {
@@ -7238,8 +7420,20 @@ function GanttTab() {
             const fh = rowLayout.ys[acIdx]?.h ?? ROW_HEIGHT;
             if (fx + fw > lx1 && fx < lx2 && fy + fh > ly1 && fy < ly2) newSel.add(f.id);
           });
-          if (newSel.size > 0) {
+          const newSelMx = new Set();
+          (mxBlocks || []).forEach(mx => {
+            const wm = weekMins(mx.day, mx.start);
+            const mxX = localWMinsToX(wm);
+            const mxW = (mx.duration / 60) * hourW;
+            const acIdx = rowLayout.visibleAc.findIndex(a => a.id === mx.acId);
+            if (acIdx < 0) return;
+            const mxY = rowLayout.ys[acIdx]?.y ?? 0;
+            const mxH = rowLayout.ys[acIdx]?.h ?? ROW_HEIGHT;
+            if (mxX + mxW > lx1 && mxX < lx2 && mxY + mxH > ly1 && mxY < ly2) newSelMx.add(mx.id);
+          });
+          if (newSel.size > 0 || newSelMx.size > 0) {
             setSelected(newSel);
+            setSelectedMx(newSelMx);
             pannedRef.current = true; // prevent click from clearing selection
           }
         }
@@ -7300,6 +7494,53 @@ function GanttTab() {
     setEditModal(null);
     clearSelection();
     setCtxMenu(null);
+  }
+
+  // Double-click on an MX block: reposition so there's a MX_GAP_MINS buffer
+  // (2h) between the nearest adjacent flight and the block. Prefers snapping
+  // AFTER the preceding flight's arrival; falls back to BEFORE the next
+  // departure if no flight precedes this block on the same tail.
+  function alignMxToGap(mx) {
+    const tailFlights = flights.filter(f => f.acId === mx.acId);
+    if (tailFlights.length === 0) return;
+    const mxStartWm = weekMins(mx.day, mx.start);
+    // 1) Look for the latest flight arriving before the MX block
+    let preceding = null, precArr = -Infinity;
+    for (const f of tailFlights) {
+      const arrWm = weekMins(f.day, f.dep) + f.block;
+      if (arrWm <= mxStartWm && arrWm > precArr) { preceding = f; precArr = arrWm; }
+    }
+    let newStartWm;
+    if (preceding) {
+      newStartWm = precArr + MX_GAP_MINS;
+    } else {
+      // No preceding flight — align before the earliest upcoming flight instead
+      let next = null, nextDep = Infinity;
+      for (const f of tailFlights) {
+        const depWm = weekMins(f.day, f.dep);
+        if (depWm >= mxStartWm && depWm < nextDep) { next = f; nextDep = depWm; }
+      }
+      if (!next) {
+        // fall back to global latest arrival (wrap-around)
+        let latest = null, latestArr = -Infinity;
+        for (const f of tailFlights) {
+          const arrWm = weekMins(f.day, f.dep) + f.block;
+          if (arrWm > latestArr) { latest = f; latestArr = arrWm; }
+        }
+        if (!latest) return;
+        newStartWm = latestArr + MX_GAP_MINS;
+      } else {
+        newStartWm = nextDep - MX_GAP_MINS - mx.duration;
+      }
+    }
+    // Snap to SNAP grid + normalise into [0, WEEK_MINS)
+    newStartWm = Math.round(newStartWm / SNAP) * SNAP;
+    while (newStartWm < 0) newStartWm += WEEK_MINS;
+    while (newStartWm >= WEEK_MINS) newStartWm -= WEEK_MINS;
+    const newDay = Math.floor(newStartWm / DAY_MINS) + 1;
+    const newStart = newStartWm % DAY_MINS;
+    if (newDay === mx.day && newStart === mx.start) return;
+    dispatch({ type: A.UPDATE_MX_BLOCK, block: { id: mx.id, day: newDay, start: newStart } });
   }
 
   function duplicateFlight(f) {
@@ -7656,12 +7897,17 @@ function GanttTab() {
       }
       ctx.globalAlpha = 1; ctx.restore();
 
-      // Label
+      // Label + duration
       if (mainW > 30) {
+        const durH = Math.floor(mx.duration / 60);
+        const durM = mx.duration % 60;
+        const durStr = durM > 0 ? `${durH}h ${durM}m` : `${durH}h`;
+        const baseLbl = mx.label || "MX";
+        const fullLbl = mainW > 70 ? `${baseLbl} · ${durStr}` : mainW > 45 ? `${baseLbl} ${durH}h` : baseLbl;
         ctx.font = "bold 14px Archivo, Arial, sans-serif";
         ctx.fillStyle = mxS.label; ctx.globalAlpha = 0.7;
         ctx.textAlign = "left"; ctx.textBaseline = "middle";
-        ctx.fillText(mx.label || "MX", bx + 6, by + bh / 2);
+        ctx.fillText(fullLbl, bx + 6, by + bh / 2);
         ctx.globalAlpha = 1;
       }
 
@@ -8168,10 +8414,11 @@ function GanttTab() {
                   {/* ── Expanded content: turnarounds + flight blocks ── */}
                   {(() => {
                     const allTurns = isPool ? [] : getAllTurnarounds(ac.id);
+                    const mxTurns = isPool ? [] : getMxTurnarounds(ac.id);
                     return (<>
                   {/* ── Turnaround indicators ── */}
-                  {/* Full detail at high zoom, violation dots at any zoom */}
-                  {allTurns.filter(t => hourW >= 28 || t.isViolation).map((t, i) => {
+                  {/* Full detail from 50% zoom, violation dots at any zoom */}
+                  {allTurns.filter(t => hourW >= 21 || t.isViolation).map((t, i) => {
                     if (t.isOverlap) return null; // overlaps handled by conflict highlight
 
                     // Week-wrap turnarounds: arrival is past Sunday, departure is on Monday
@@ -8239,6 +8486,52 @@ function GanttTab() {
                           </>
                         )}
                         {/* Narrow indicator dot (when label does not fit) */}
+                        {!showLabel && (
+                          <circle cx={cx} cy={midY} r={isV ? 4 : 3}
+                            fill={isV ? C.danger : C.textMuted} />
+                        )}
+                      </g>
+                    );
+                  })}
+
+                  {/* ── MX turntime indicators (flight ↔ MX boundaries) ── */}
+                  {mxTurns.filter(t => hourW >= 21 || t.isViolation).map((t, i) => {
+                    if (t.isOverlap) return null; // overlaps rendered via MX error formatting
+                    const x1 = localWMinsToX(t.arrWMins);
+                    const x2 = localWMinsToX(t.depWMins);
+                    const cx = (x1 + x2) / 2;
+                    const gapPx = x2 - x1;
+                    const isV  = t.isViolation;
+                    const col  = isV ? C.danger : "#6B7280";
+                    const bg   = isV ? C.dangerLight : C.offWhite2;
+                    const midY = ry + ROW_HEIGHT / 2;
+                    const showLabel = gapPx > 32;
+                    const labelW = Math.min(56, Math.max(34, gapPx - 4));
+                    const titleTxt = isV
+                      ? `mx buffer: ${fmtTurn(t.gapMins)} vs ${fmtTurn(t.minTurn)} min`
+                      : `mx buffer: ${fmtTurn(t.gapMins)}`;
+
+                    return (
+                      <g key={`mxt-${i}`} style={{ cursor: "default" }}>
+                        <title>{titleTxt}</title>
+                        <rect x={x1} y={midY - 10} width={x2 - x1} height={20}
+                          fill={col} opacity={isV ? "0.12" : "0.08"} rx={2} />
+                        <line x1={x1} y1={midY} x2={x2} y2={midY}
+                          stroke={col} strokeWidth={isV ? "2.5" : "2"}
+                          strokeDasharray={isV ? "4,3" : "6,4"} opacity="1" />
+                        <line x1={x1} y1={midY - 6} x2={x1} y2={midY + 6}
+                          stroke={col} strokeWidth="2.5" opacity="1" />
+                        <line x1={x2} y1={midY - 6} x2={x2} y2={midY + 6}
+                          stroke={col} strokeWidth="2.5" opacity="1" />
+                        {showLabel && (<>
+                          <rect x={cx - labelW / 2} y={midY - 10} width={labelW} height={18}
+                            fill={bg} rx={4} stroke={col} strokeWidth="1.2" />
+                          <text x={cx} y={midY + 2} fill={col}
+                            fontSize={9} fontFamily={FONT} fontWeight="700"
+                            textAnchor="middle" style={{ userSelect: "none" }}>
+                            {fmtTurn(t.gapMins)}
+                          </text>
+                        </>)}
                         {!showLabel && (
                           <circle cx={cx} cy={midY} r={isV ? 4 : 3}
                             fill={isV ? C.danger : C.textMuted} />
@@ -8432,31 +8725,113 @@ function GanttTab() {
                     const overflows = mxX + mxW > rightEdge;
                     const mainW = overflows ? rightEdge - mxX : mxW;
                     const wrapW = overflows ? (mxX + mxW) - rightEdge : 0;
-                    const mxDimmed = !!ganttSearch;
+                    const mxSearchMatch = ganttSearchMatches && ganttSearchMatches.has(mx.id);
+                    const mxSearchDim = ganttSearchMatches && !mxSearchMatch;
+                    const mxSel = selectedMx.has(mx.id);
+                    const mxIss = mxIssues(mx);
+                    const mxErr = mxIss.errors.length > 0;
+                    const mxWarn = !mxErr && mxIss.warnings.length > 0;
+
+                    // Resolve fill / stroke with search + selection + error precedence
+                    const bgFill    = mxSearchDim ? C.offWhite2 : mxErr ? C.dangerLight : MX_STYLE().bg;
+                    const borderCol = mxSearchMatch ? C.yellowHeavy : mxSel ? C.yellowHeavy : mxErr ? C.danger : mxSearchDim ? C.brownLight : MX_STYLE().stroke;
+                    const borderW   = mxSearchMatch ? 2.5 : mxSel ? 2 : mxErr ? 2 : 1.5;
 
                     return (
-                      <g key={mx.id} style={{ opacity: mxDimmed ? 0.25 : 1, transition: "opacity 0.15s" }}>
+                      <g key={mx.id} style={{ opacity: mxSearchDim ? 0.35 : 1, transition: "opacity 0.15s" }}>
                         <defs>
                           <pattern id={`mx-hatch-${mx.id}`} patternUnits="userSpaceOnUse"
                             width="8" height="8" patternTransform="rotate(45)">
                             <line x1="0" y1="0" x2="0" y2="8"
-                              stroke={MX_STYLE().hatch} strokeWidth="2.5" opacity={MX_STYLE().hatchOpacity} />
+                              stroke={mxErr ? C.danger : MX_STYLE().hatch} strokeWidth="2.5" opacity={mxErr ? "0.3" : MX_STYLE().hatchOpacity} />
                           </pattern>
                         </defs>
+                        {/* Selection shadow */}
+                        {mxSel && (
+                          <rect x={mxX - 1} y={mxY - 1} width={mainW + 2} height={mxH + 2}
+                            rx={5} fill="none" stroke={C.yellowHeavy} strokeWidth={2.5}
+                            strokeDasharray={selectedMx.size > 1 ? "4 2" : "none"} />
+                        )}
                         {/* Main block */}
                         <rect x={mxX} y={mxY} width={mainW} height={mxH}
-                          fill={MX_STYLE().bg} rx={4}
-                          stroke={MX_STYLE().stroke} strokeWidth={1.5}
-                          style={{ cursor: "grab" }}
+                          fill={bgFill} rx={4}
+                          stroke={borderCol} strokeWidth={borderW}
+                          style={{
+                            cursor: "grab",
+                            filter: mxSearchMatch ? "drop-shadow(0 0 6px rgba(27,54,93,0.5))" : "none",
+                          }}
                           onMouseDown={e => {
                             e.preventDefault(); e.stopPropagation();
                             dragActiveRef.current = true;
-                            dispatch({ type: A.HISTORY_PUSH });
-                            const startCX = e.clientX;
+                            const startCX = e.clientX, startCY = e.clientY;
                             const startWm = mxWm;
-                            const origAcIdx = rowLayout.visibleAc.findIndex(a => a.id === mx.acId);
+                            let movedEnough = false;
+                            let historyPushed = false;
+                            const synth = { shiftKey: e.shiftKey, metaKey: e.metaKey, ctrlKey: e.ctrlKey };
+                            const DAY_NAMES = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+                            function ensureDragLabel() {
+                              if (!svgRef.current) return;
+                              if (svgRef.current.querySelector(`[data-drag-label-mx="${mx.id}"]`)) return;
+                              const ns = "http://www.w3.org/2000/svg";
+                              const bg = document.createElementNS(ns, "rect");
+                              bg.setAttribute("data-drag-label-mx-bg", mx.id);
+                              bg.setAttribute("rx", "3");
+                              bg.setAttribute("fill", "#FFF8E1");
+                              bg.setAttribute("stroke", "#C5A43E");
+                              bg.setAttribute("stroke-width", "1");
+                              bg.style.pointerEvents = "none";
+                              const lbl = document.createElementNS(ns, "text");
+                              lbl.setAttribute("data-drag-label-mx", mx.id);
+                              lbl.setAttribute("font-size", "10");
+                              lbl.setAttribute("font-family", "Archivo, Arial, sans-serif");
+                              lbl.setAttribute("font-weight", "700");
+                              lbl.setAttribute("fill", "#1B365D");
+                              lbl.setAttribute("text-anchor", "middle");
+                              lbl.style.pointerEvents = "none";
+                              lbl.style.userSelect = "none";
+                              svgRef.current.appendChild(bg);
+                              svgRef.current.appendChild(lbl);
+                            }
+                            function updateDragLabel(newWm, newDay, newStart, newRy, targetAc) {
+                              const lbl = svgRef.current?.querySelector(`[data-drag-label-mx="${mx.id}"]`);
+                              const bg = svgRef.current?.querySelector(`[data-drag-label-mx-bg="${mx.id}"]`);
+                              if (!lbl) return;
+                              const endMins = newStart + mx.duration;
+                              const endDayOffset = Math.floor(endMins / DAY_MINS);
+                              const dayStr = DAY_NAMES[(newDay - 1) % 7] || "";
+                              const endDayIdx = ((newDay - 1) + endDayOffset) % 7;
+                              const endDayStr = endDayOffset > 0 ? ` ${DAY_NAMES[endDayIdx]}` : "";
+                              const acChanged = targetAc && targetAc.id !== mx.acId ? ` · ${targetAc.reg}` : "";
+                              const content = `${dayStr} ${toHHMM(newStart)} → ${toHHMM(endMins)}${endDayStr}${acChanged}`;
+                              lbl.textContent = content;
+                              const blockW = (mx.duration / 60) * hourW;
+                              const lblX = localWMinsToX(newWm) + blockW / 2;
+                              const lblY = (newRy ?? mxY) - 6;
+                              lbl.setAttribute("x", String(lblX));
+                              lbl.setAttribute("y", String(lblY));
+                              if (bg) {
+                                const tw = content.length * 6.5;
+                                bg.setAttribute("x", String(lblX - tw / 2 - 4));
+                                bg.setAttribute("y", String(lblY - 10));
+                                bg.setAttribute("width", String(tw + 8));
+                                bg.setAttribute("height", "14");
+                              }
+                            }
+                            function removeDragLabel() {
+                              const lbl = svgRef.current?.querySelector(`[data-drag-label-mx="${mx.id}"]`);
+                              if (lbl) lbl.remove();
+                              const bg = svgRef.current?.querySelector(`[data-drag-label-mx-bg="${mx.id}"]`);
+                              if (bg) bg.remove();
+                            }
                             function onMove(ev) {
                               const dx = ev.clientX - startCX;
+                              const dy = ev.clientY - startCY;
+                              if (!movedEnough && Math.abs(dx) < 3 && Math.abs(dy) < 3) return;
+                              if (!movedEnough) {
+                                movedEnough = true;
+                                if (!historyPushed) { dispatch({ type: A.HISTORY_PUSH }); historyPushed = true; }
+                                ensureDragLabel();
+                              }
                               const dMins = Math.round((dx / hourW) * 60 / SNAP) * SNAP;
                               let newWm = startWm + dMins;
                               if (newWm < 0) newWm += WEEK_MINS;
@@ -8465,15 +8840,19 @@ function GanttTab() {
                               const newStart = newWm % DAY_MINS;
                               // Check for aircraft row change
                               const svg = svgRef.current;
+                              let newAcId = mx.acId;
+                              let newRy = mxY;
+                              let targetAc = null;
                               if (svg) {
                                 const pt = svg.createSVGPoint();
                                 pt.x = ev.clientX; pt.y = ev.clientY;
                                 const svgPt = pt.matrixTransform(svg.getScreenCTM().inverse());
-                                let newAcId = mx.acId;
                                 for (let i = 0; i < rowLayout.ys.length; i++) {
                                   const { y: ry2, h: rh } = rowLayout.ys[i];
                                   if (svgPt.y >= ry2 && svgPt.y < ry2 + rh && rowLayout.visibleAc[i]) {
-                                    if (rowLayout.visibleAc[i].id !== POOL_AC_ID) newAcId = rowLayout.visibleAc[i].id;
+                                    newAcId = rowLayout.visibleAc[i].id;
+                                    newRy = ry2 + 2;
+                                    targetAc = rowLayout.visibleAc[i];
                                     break;
                                   }
                                 }
@@ -8481,16 +8860,22 @@ function GanttTab() {
                               } else {
                                 dispatch({ type: A.UPDATE_MX_BLOCK, block: { id: mx.id, day: newDay, start: newStart }, _noHistory: true });
                               }
+                              updateDragLabel(newWm, newDay, newStart, newRy, targetAc);
                             }
                             function onUp() {
                               dragActiveRef.current = false;
                               window.removeEventListener("mousemove", onMove);
                               window.removeEventListener("mouseup", onUp);
+                              removeDragLabel();
+                              if (!movedEnough) toggleSelectMx(mx.id, synth);
                             }
                             window.addEventListener("mousemove", onMove);
                             window.addEventListener("mouseup", onUp);
                           }}
-                          onDoubleClick={e => { e.stopPropagation(); setMxEditModal({ ...mx }); }}
+                          onDoubleClick={e => {
+                            e.stopPropagation();
+                            alignMxToGap(mx);
+                          }}
                           onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setMxCtxMenu({ x: e.clientX, y: e.clientY, block: mx }); setTooltip(null); }}
                           onMouseEnter={e => { if (!dragActiveRef.current) setTooltip({ mx: true, block: mx, x: e.clientX, y: e.clientY }); }}
                           onMouseLeave={() => { if (!dragActiveRef.current) setTooltip(null); }}
@@ -8501,21 +8886,54 @@ function GanttTab() {
                         {/* Wrap-around block */}
                         {wrapW > 1 && (<>
                           <rect x={LABEL_WIDTH} y={mxY} width={wrapW} height={mxH}
-                            fill={MX_STYLE().bg} rx={4}
-                            stroke={MX_STYLE().stroke} strokeWidth={1.5} strokeDasharray="4 4"
+                            fill={bgFill} rx={4}
+                            stroke={borderCol} strokeWidth={borderW} strokeDasharray="4 4"
                             style={{ pointerEvents: "none" }} />
                           <rect x={LABEL_WIDTH} y={mxY} width={wrapW} height={mxH}
                             fill={`url(#mx-hatch-${mx.id})`} rx={4}
                             style={{ pointerEvents: "none" }} />
                         </>)}
-                        {/* Label */}
-                        {mainW > 24 && (
-                          <text x={mxX + 8} y={mxY + mxH / 2 + 1}
-                            fill={MX_STYLE().label} fontSize={hourW >= 14 ? 10 : 8} fontFamily={FONT}
-                            fontWeight="700" opacity="0.7"
-                            style={{ pointerEvents: "none", userSelect: "none" }}>
-                            {mx.label || "MX"}{mainW > 80 ? ` · ${Math.floor(mx.duration / 60)}h${mx.duration % 60 > 0 ? ` ${mx.duration % 60}m` : ""}` : ""}
-                          </text>
+                        {/* Label + duration */}
+                        {mainW > 24 && (() => {
+                          const durH = Math.floor(mx.duration / 60);
+                          const durM = mx.duration % 60;
+                          const fullDur = durM > 0 ? `${durH}h ${durM}m` : `${durH}h`;
+                          const baseLbl = mx.label || "MX";
+                          const text = mainW > 90 ? `${baseLbl} · ${fullDur}` : mainW > 55 ? `${baseLbl} ${durH}h` : baseLbl;
+                          const showTimes = hourW >= 21 && mainW > 44 && mxH > 28;
+                          return (
+                            <text x={mxX + 8} y={mxY + mxH / 2 + (showTimes ? -3 : 1)}
+                              fill={mxErr ? C.danger : MX_STYLE().label} fontSize={hourW >= 14 ? 10 : 8} fontFamily={FONT}
+                              fontWeight="700" opacity={mxErr ? 0.9 : 0.7}
+                              style={{ pointerEvents: "none", userSelect: "none" }}>
+                              {text}
+                            </text>
+                          );
+                        })()}
+                        {/* Start–end times — from 50% zoom */}
+                        {hourW >= 21 && mainW > 44 && mxH > 28 && (() => {
+                          const endMins = mx.start + mx.duration;
+                          const endDayOffset = Math.floor(endMins / DAY_MINS);
+                          const times = `${toHHMM(mx.start)}–${toHHMM(endMins)}${endDayOffset > 0 ? ` +${endDayOffset}d` : ""}`;
+                          return (
+                            <text x={mxX + 8} y={mxY + mxH / 2 + 10}
+                              fill={mxErr ? C.danger : MX_STYLE().label}
+                              fontSize={7} fontFamily={FONT} opacity="0.55" fontWeight="600"
+                              style={{ pointerEvents: "none", userSelect: "none" }}>
+                              {times}
+                            </text>
+                          );
+                        })()}
+                        {/* Issue indicator — right-center of block */}
+                        {(mxErr || mxWarn) && mainW > 14 && (
+                          <g style={{ pointerEvents: "none" }}>
+                            <circle cx={mxX + mainW - 8} cy={mxY + mxH / 2} r={5}
+                              fill={mxErr ? "#C4664A" : "#C4964A"} opacity="0.85" />
+                            <text x={mxX + mainW - 8} y={mxY + mxH / 2 + 2.5} textAnchor="middle"
+                              fill="#FFFFFF" fontSize={7} fontWeight="700"
+                              fontFamily={FONT}
+                              style={{ pointerEvents: "none", userSelect: "none" }}>!</text>
+                          </g>
                         )}
                       </g>
                     );
@@ -8630,6 +9048,20 @@ function GanttTab() {
               <div><span style={{ color: C.textMuted, fontSize: 10 }}>Aircraft:</span> <span style={{ fontFamily: FONT, fontWeight: 700 }}>{ac?.reg || "?"}</span></div>
               <div><span style={{ color: C.textMuted, fontSize: 10 }}>Day {mx.day}:</span> <span style={{ fontFamily: FONT }}>{toHHMM(mx.start)} – {toHHMM(mx.start + mx.duration)}</span></div>
               <div><span style={{ color: C.textMuted, fontSize: 10 }}>Duration:</span> <span style={{ fontFamily: FONT, fontWeight: 700 }}>{durH}h{durM > 0 ? ` ${durM}m` : ""}</span></div>
+              {(() => {
+                const iss = mxIssues(mx);
+                if (!iss.errors.length && !iss.warnings.length) return null;
+                return (
+                  <div style={{ marginTop: 6, paddingTop: 6, borderTop: `1px solid ${C.brownLight}` }}>
+                    {iss.errors.map((e, i) => (
+                      <div key={`e${i}`} style={{ fontSize: 10, color: C.danger, lineHeight: 1.5 }}>✕ {e}</div>
+                    ))}
+                    {iss.warnings.map((w, i) => (
+                      <div key={`w${i}`} style={{ fontSize: 10, color: C.yellowHeavy, lineHeight: 1.5 }}>⚠︎ {w}</div>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           );
         }
@@ -9071,10 +9503,16 @@ function GanttTab() {
 
       {/* ── Right-click context menu ─────────────────────────────── */}
       {/* ── Bulk action bar (multi-select) ────────────────────────── */}
-      {selected.size > 1 && (() => {
+      {(selected.size + selectedMx.size) > 1 && (() => {
         const selFlights = flights.filter(f => selected.has(f.id));
+        const selMx = (mxBlocks || []).filter(mx => selectedMx.has(mx.id));
         const selRoutes = [...new Set(selFlights.map(f => f.route))];
-        const selAc = [...new Set(selFlights.map(f => f.acId))];
+        const totalCount = selected.size + selectedMx.size;
+        const mixedLabel = selected.size > 0 && selectedMx.size > 0
+          ? `${selected.size} flight${selected.size === 1 ? "" : "s"} + ${selectedMx.size} MX`
+          : selected.size > 0
+            ? `${selected.size} flights`
+            : `${selectedMx.size} maintenance block${selectedMx.size === 1 ? "" : "s"}`;
         return (
           <div style={{
             position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 5500,
@@ -9085,11 +9523,13 @@ function GanttTab() {
             fontFamily: FONT, fontSize: 12,
           }}>
             <span style={{ fontWeight: 700, fontSize: 13, color: C.brownDark }}>
-              {selected.size} flights selected
+              {mixedLabel} selected
             </span>
-            <span style={{ fontSize: 10, color: C.textMuted, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {selRoutes.length <= 3 ? selRoutes.join(", ") : `${selRoutes.slice(0, 3).join(", ")}…`}
-            </span>
+            {selRoutes.length > 0 && (
+              <span style={{ fontSize: 10, color: C.textMuted, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {selRoutes.length <= 3 ? selRoutes.join(", ") : `${selRoutes.slice(0, 3).join(", ")}…`}
+              </span>
+            )}
 
             <div style={{ width: 1, height: 24, background: C.brownLight }} />
 
@@ -9097,7 +9537,8 @@ function GanttTab() {
             <span style={{ fontSize: 10, fontWeight: 600, color: C.textMuted }}>Retime:</span>
             {[-60, -30, -15, -10, -5, +5, +10, +15, +30, +60].map(m => (
               <button key={m} onClick={() => {
-                dispatch({ type: A.BULK_RETIME, ids: selected, shiftMins: m });
+                if (selected.size > 0) dispatch({ type: A.BULK_RETIME, ids: selected, shiftMins: m });
+                if (selectedMx.size > 0) dispatch({ type: A.BULK_MX_RETIME, ids: selectedMx, shiftMins: m });
               }} style={{
                 background: C.offWhite2, color: C.text, border: `1px solid ${C.brownLight}`,
                 padding: "4px 8px", borderRadius: 4, cursor: "pointer",
@@ -9111,7 +9552,8 @@ function GanttTab() {
             <span style={{ fontSize: 10, fontWeight: 600, color: C.textMuted }}>Move to:</span>
             <select onChange={e => {
               if (!e.target.value) return;
-              dispatch({ type: A.BULK_REASSIGN, ids: selected, toAcId: e.target.value });
+              if (selected.size > 0) dispatch({ type: A.BULK_REASSIGN, ids: selected, toAcId: e.target.value });
+              if (selectedMx.size > 0) dispatch({ type: A.BULK_MX_REASSIGN, ids: selectedMx, toAcId: e.target.value });
               e.target.value = "";
             }} style={{
               background: C.offWhite2, color: C.text,
@@ -9122,9 +9564,10 @@ function GanttTab() {
               {aircraft.map(ac => <option key={ac.id} value={ac.id}>{ac.reg}</option>)}
             </select>
 
-            {/* Park (unassign) */}
+            {/* Park (send selection to workspace/pool row) */}
             <button onClick={() => {
-              dispatch({ type: A.BULK_REASSIGN, ids: selected, toAcId: POOL_AC_ID });
+              if (selected.size > 0) dispatch({ type: A.BULK_REASSIGN, ids: selected, toAcId: POOL_AC_ID });
+              if (selectedMx.size > 0) dispatch({ type: A.BULK_MX_REASSIGN, ids: selectedMx, toAcId: POOL_AC_ID });
             }} style={{
               background: C.offWhite2, color: C.textSoft, border: `1px solid ${C.brownLight}`,
               padding: "4px 10px", borderRadius: 4, cursor: "pointer",
@@ -9136,7 +9579,7 @@ function GanttTab() {
             {/* Duplicate group */}
             <button onClick={() => {
               dispatch({ type: A.HISTORY_PUSH });
-              const newIds = new Set();
+              const newFlightIds = new Set();
               selFlights.forEach(f => {
                 const newId = genFlightId();
                 dispatch({ type: A.ADD_FLIGHT, flight: {
@@ -9145,28 +9588,34 @@ function GanttTab() {
                   cargoOp: f.cargoOp || "none", payload: f.payload || 0,
                   customer: f.customer || "",
                 }, _noHistory: true });
-                newIds.add(newId);
+                newFlightIds.add(newId);
               });
-              setSelected(newIds);
+              // MX duplicates are created via ADD_MX_BLOCK; their new ids are generated inside the reducer, so we can't re-select them here
+              selMx.forEach(mx => {
+                dispatch({ type: A.ADD_MX_BLOCK, acId: mx.acId, day: mx.day, start: mx.start, duration: mx.duration, label: mx.label, _noHistory: true });
+              });
+              setSelected(newFlightIds);
+              setSelectedMx(new Set());
             }} style={{
               background: C.yellowLight, color: C.yellowHeavy, border: `1px solid ${C.yellowHeavy}`,
               padding: "4px 10px", borderRadius: 4, cursor: "pointer",
               fontSize: 10, fontWeight: 700, fontFamily: FONT,
-            }}>Duplicate {selected.size}</button>
+            }}>Duplicate {totalCount}</button>
 
             <div style={{ flex: 1 }} />
 
             {/* Delete */}
             <button onClick={() => {
-              if (window.confirm(`Delete ${selected.size} flights?`)) {
-                dispatch({ type: A.BULK_DELETE, ids: selected });
+              if (window.confirm(`Delete ${mixedLabel}?`)) {
+                if (selected.size > 0) dispatch({ type: A.BULK_DELETE, ids: selected });
+                if (selectedMx.size > 0) dispatch({ type: A.BULK_MX_DELETE, ids: selectedMx });
                 clearSelection();
               }
             }} style={{
               background: C.danger, color: "#fff", border: "none",
               padding: "6px 14px", borderRadius: 5, cursor: "pointer",
               fontSize: 11, fontWeight: 700, fontFamily: FONT,
-            }}>Delete {selected.size}</button>
+            }}>Delete {totalCount}</button>
 
             {/* Clear selection */}
             <button onClick={clearSelection} style={{
